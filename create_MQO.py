@@ -260,6 +260,9 @@ class CreateMQO:
         # 顔の側面の対応点を削除
         delete_datalist = [234, 93, 132, 58, 172, 454, 323, 361, 288, 397]
         # カメラ位置姿勢推定に用いる対応点パターン
+
+
+
         # マスクに隠れない部分は対応点として使用し、マスクに隠れる部分はテクスチャとして使用する
         datalist1 = [6, 7, 8, 9, 10, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 33, 34, 35, 46, 52, 53, 
                     54, 55, 56, 63, 65, 66, 67, 68, 69, 70, 71, 103, 104, 105, 107, 108, 109, 
@@ -270,6 +273,8 @@ class CreateMQO:
                     298, 299, 300, 301, 332, 333, 334, 336, 337, 338, 339, 341, 342, 351, 353, 356, 
                     359, 362, 368, 372, 373, 374, 380, 381, 382, 383, 384, 385, 386, 387, 388, 
                     389, 390, 398, 413, 414, 417, 441, 442, 443, 444, 445, 446, 463, 464, 465, 466, 467]
+        
+
         datalist2 = [3, 5, 6, 7, 8, 9, 10, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 33,
                     46, 47, 51, 52, 53, 54, 55, 56, 63, 65, 66, 67, 68, 69, 70, 71, 103, 104,
                     105, 107, 108, 109, 110, 112, 113, 114, 120, 121, 122, 124, 128, 130, 133,
@@ -282,6 +287,7 @@ class CreateMQO:
                     362, 373, 374, 380, 381, 382, 383, 384, 385, 386, 387, 388, 390, 398,
                     399, 412, 413, 414, 417, 419, 437, 441, 442, 443, 444, 445, 446, 448, 449,
                     450, 451, 452, 453, 456, 463, 464, 465, 466, 467]
+        
         # マスクのモデルを作成する際に用いる対応点
         self.mask_list = [0, 1, 2, 3, 4, 5, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 32, 36, 37, 38, 39, 40, 
                           41, 42, 43, 44, 45, 48, 49, 50, 51, 57, 59, 60, 61, 62, 64, 72, 73, 74, 75, 76, 
@@ -330,14 +336,14 @@ class CreateMQO:
     
         # ファイル出力
         np.savetxt("data/face_3D.dat", data)
-        # np.savetxt("data/face_3D_1.dat", data1)
-        # np.savetxt("data/face_3D_2.dat", data2)
+        np.savetxt("data/face_3D_1.dat", data1)
+        np.savetxt("data/face_3D_2.dat", data2)
         self.data = np.array(data)
-        # self.data1 = np.array(data1)
-        # self.data2 = np.array(data2)
+        self.data1 = np.array(data1)
+        self.data2 = np.array(data2)
         self.datalist = datalist
-        # self.datalist1 = datalist1
-        # self.datalist2 = datalist2
+        self.datalist1 = datalist1
+        self.datalist2 = datalist2
         np.savetxt("mqodata/landmark/landmark_"+self.today+".dat", landmark)
         self.landmark = np.array(landmark)
         np.savetxt("mqodata/landmark3d/landmark3d_"+self.today+".dat", landmark_nomalize)
