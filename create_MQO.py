@@ -148,7 +148,13 @@ class CreateMQO:
             color=(0, 0, 255))
 
         # テクスチャファイル読み込み
-        img = cv2.imread("mqodata/"+texture_filename)
+        img_path = "mqodata/"+texture_filename
+        print(f"Loading texture file: {img_path}")
+        img = cv2.imread(img_path)
+        if img is None:
+            print(f"Error: Could not load image file: {img_path}")
+            print("Please check if the file exists and the path is correct.")
+            sys.exit(1)
         rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         annotated_image = img.copy() 
         

@@ -32,7 +32,7 @@ class Application:
     # @param width    : 画像の横サイズ
     # @param height   : 画像の縦サイズ
     #
-    def __init__(self, title, width, height, use_api, draw_landmark):
+    def __init__(self, title, width, height, use_api, draw_landmark, use_facelandmark=False):
         self.width   = width
         self.height  = height
         self.channel = 3
@@ -46,6 +46,8 @@ class Application:
         self.detect_stable = 0
         # 顔のランドマークを記述するかどうか
         self.draw_landmark = draw_landmark
+        # FaceLandmark機能を使用するかどうか
+        self.use_facelandmark = use_facelandmark
         
         # 録画用変数
         self.use_record = False # 初期値はFalse
@@ -108,6 +110,25 @@ class Application:
         self.drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
             thickness = 1, 
             circle_radius = 1)
+        
+        #
+        # FaceLandmark追加機能
+        #
+        if self.use_facelandmark:
+            # より高精度なFaceLandmark設定,
+            # 近距離model_selection=0, 遠距離model_selection=1
+            #model_selectionは信頼度x以上を顔とする
+
+            self.face_landmark_solution = mp.solutions.face_detection.FaceDetection(
+                model_selection=0, 
+                min_detection_confidence=0.5)
+            
+            # 追加のランドマーク描画設定
+            self.landmark_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
+                thickness = 2, 
+                circle_radius = 2, 
+                color = (0, 255, 0))
+            print("FaceLandmark機能が有効化されました")
         
         #
         # マスク着用有無の推論モデルYOLOv8(未使用)
@@ -215,6 +236,12 @@ class Application:
         self.face_mesh = self.face_mesh_solution.process(self.image)
         
         #
+        # FaceLandmark追加処理
+        #
+        if self.use_facelandmark:
+            self.face_detection = self.face_landmark_solution.process(self.image)
+        
+        #
         # 画像の描画を実行
         #
         self.image.flags.writeable = True
@@ -223,6 +250,10 @@ class Application:
         if self.draw_landmark:
             # ランドマークを描画するメソッドを実行
             self.draw_landmarks(self.image)
+        
+        # FaceLandmark追加描画
+        if self.use_facelandmark:
+            self.draw_face_detection(self.image)
 
         # 画像を描画するメソッドを実行
         self.glwindow.draw_image(self.image)
@@ -376,6 +407,24 @@ class Application:
                     mp.solutions.face_mesh.FACEMESH_TESSELATION,
                     self.drawing_spec,
                     self.drawing_spec)
+    
+    #
+    # FaceLandmark検出結果を画像上に描画する関数（バウンディングボックスなし）
+    #
+    def draw_face_detection(self, image):
+        if self.face_detection.detections:
+            for detection in self.face_detection.detections:
+                # バウンディングボックスを描画せず、キーポイントのみを描画
+                if detection.location_data.relative_keypoints:
+                    for keypoint in detection.location_data.relative_keypoints:
+                        # キーポイントの座標を画像サイズに変換
+                        x = int(keypoint.x * self.width)
+                        y = int(keypoint.y * self.height)
+                        # キーポイントを円で描画
+                        cv2.circle(image, (x, y), 
+                                   self.landmark_drawing_spec.circle_radius, 
+                                   self.landmark_drawing_spec.color, 
+                                   self.landmark_drawing_spec.thickness)
         
     #
     # キー関数
@@ -429,6 +478,23 @@ class Application:
                 print("対応点をモード0(顔全体)に変更")
             else:
                 pass
+        
+        # FでFaceLandmark機能のON/OFF切り替え
+        if action == glfw.PRESS and key == glfw.KEY_F:
+            self.use_facelandmark = not self.use_facelandmark
+            if self.use_facelandmark:
+                # FaceLandmark機能を有効化
+                if not hasattr(self, 'face_landmark_solution'):
+                    self.face_landmark_solution = mp.solutions.face_detection.FaceDetection(
+                        model_selection=0, 
+                        min_detection_confidence=0.5)
+                    self.landmark_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
+                        thickness = 2, 
+                        circle_radius = 2, 
+                        color = (0, 255, 0))
+                print("FaceLandmark機能を有効化しました")
+            else:
+                print("FaceLandmark機能を無効化しました")
 
     #
     # モデル設定

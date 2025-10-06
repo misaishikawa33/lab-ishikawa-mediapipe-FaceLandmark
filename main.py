@@ -29,7 +29,7 @@ class Main:
     # (@param kwargs : image = "image_filename"
     #                  texture = "texture_filename")
     #
-    def __init__(self, texture, draw_landmark):
+    def __init__(self, texture, draw_landmark, use_facelandmark=False):
         
         if texture is not None:
             self.take_texture = False
@@ -53,7 +53,7 @@ class Main:
         self.app = Application.Application(
             title, 
             width, height, use_api,
-            draw_landmark)
+            draw_landmark, use_facelandmark)
         
         #
         # テクスチャ撮影
@@ -177,6 +177,7 @@ if __name__ == '__main__':
     )
     parser.add_argument("--texture", default=None, help = "texture_filename")
     parser.add_argument('--draw_landmark', action='store_true', help = "draw landmark")
+    parser.add_argument('--use_facelandmark', action='store_true', help = "enable FaceLandmark processing")
     args = parser.parse_args()
     
-    Main(args.texture, args.draw_landmark)
+    Main(args.texture, args.draw_landmark, args.use_facelandmark)
