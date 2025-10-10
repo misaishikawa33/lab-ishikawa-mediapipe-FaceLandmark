@@ -383,6 +383,28 @@ class Application:
         model_shift_Y = 0.0
         model_shift_Z = 0.0
         
+        # ランドマーク位置調整が有効な場合、モデルに平行移動を適用
+        if self.adjust_landmarks and self.alignment_info:
+            # 234(右端)と454(左端)の平均オフセットを計算
+            offset_x_234 = self.alignment_info['right_ear_target'][0] - self.alignment_info['right_face_current'][0]
+            offset_y_234 = self.alignment_info['right_ear_target'][1] - self.alignment_info['right_face_current'][1]
+            offset_x_454 = self.alignment_info['left_ear_target'][0] - self.alignment_info['left_face_current'][0]
+            offset_y_454 = self.alignment_info['left_ear_target'][1] - self.alignment_info['left_face_current'][1]
+            
+            # 平均オフセット(ピクセル単位)
+            avg_offset_x = (offset_x_234 + offset_x_454) / 2.0
+            avg_offset_y = (offset_y_234 + offset_y_454) / 2.0
+            
+            # OpenGLの座標系に変換(画像座標→正規化座標→OpenGL座標)
+            # X軸: 画像の横方向のオフセット
+            model_shift_X = avg_offset_x
+            # Y軸: 画像の縦方向のオフセット(OpenGLはY軸が反転)
+            model_shift_Y = -avg_offset_y
+            # Z軸: 変更なし
+            model_shift_Z = 0.0
+            
+            print(f"モデル平行移動: X={model_shift_X:.1f}, Y={model_shift_Y:.1f}")
+        
         model_scale_X = 1.0 * scale_x * self.model_scale_factor
         model_scale_Y = 1.0 * scale_y * self.model_scale_factor
         model_scale_Z = 1.0 * self.model_scale_factor 
