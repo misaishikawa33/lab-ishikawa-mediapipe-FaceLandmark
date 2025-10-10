@@ -321,6 +321,14 @@ class Application:
                 self.model_scale_factor = 1.0
             
             #
+            # ランドマーク位置調整が有効な場合、調整情報を計算
+            #
+            if self.adjust_landmarks and self.use_facelandmark:
+                self.alignment_info = self.calculate_landmark_alignment()
+            else:
+                self.alignment_info = None
+            
+            #
             # マスク着用時、モデルを描画
             #
             if success:
@@ -417,13 +425,36 @@ class Application:
     def draw_landmarks(self, image):
         if self.face_mesh.multi_face_landmarks:
             for face_landmarks in self.face_mesh.multi_face_landmarks:
-                mp.solutions.drawing_utils.draw_landmarks(
-                    image,
-                    face_landmarks,
-                    # 描画モード
-                    mp.solutions.face_mesh.FACEMESH_TESSELATION,
-                    self.drawing_spec,
-                    self.drawing_spec)
+                # ランドマーク位置調整が有効な場合、234と454の座標を調整
+                if self.adjust_landmarks and self.alignment_info:
+                    # ランドマークのコピーを作成
+                    import copy
+                    landmarks_copy = copy.deepcopy(face_landmarks)
+                    
+                    # ランドマーク234（右端）をFaceDetectionの右耳に合わせる
+                    landmarks_copy.landmark[234].x = self.alignment_info['right_ear_target'][0] / self.width
+                    landmarks_copy.landmark[234].y = self.alignment_info['right_ear_target'][1] / self.height
+                    
+                    # ランドマーク454（左端）をFaceDetectionの左耳に合わせる
+                    landmarks_copy.landmark[454].x = self.alignment_info['left_ear_target'][0] / self.width
+                    landmarks_copy.landmark[454].y = self.alignment_info['left_ear_target'][1] / self.height
+                    
+                    mp.solutions.drawing_utils.draw_landmarks(
+                        image,
+                        landmarks_copy,
+                        # 描画モード
+                        mp.solutions.face_mesh.FACEMESH_TESSELATION,
+                        self.drawing_spec,
+                        self.drawing_spec)
+                else:
+                    # 通常の描画
+                    mp.solutions.drawing_utils.draw_landmarks(
+                        image,
+                        face_landmarks,
+                        # 描画モード
+                        mp.solutions.face_mesh.FACEMESH_TESSELATION,
+                        self.drawing_spec,
+                        self.drawing_spec)
     
     #
     # FaceLandmark検出結果を画像上に描画する関数（バウンディングボックスなし）
@@ -433,7 +464,7 @@ class Application:
             for detection in self.face_detection.detections:
                 # バウンディングボックスを描画せず、キーポイントのみを描画
                 if detection.location_data.relative_keypoints:
-                    for keypoint in detection.location_data.relative_keypoints:
+                    for idx, keypoint in enumerate(detection.location_data.relative_keypoints):
                         # キーポイントの座標を画像サイズに変換
                         x = int(keypoint.x * self.width)
                         y = int(keypoint.y * self.height)
@@ -442,6 +473,46 @@ class Application:
                                    self.landmark_drawing_spec.circle_radius, 
                                    self.landmark_drawing_spec.color, 
                                    self.landmark_drawing_spec.thickness)
+                        # キーポイント番号を表示
+                        cv2.putText(image, str(idx), (x + 5, y - 5), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
+        
+        # ランドマーク位置調整が有効な場合、デバッグ表示を追加
+        if self.adjust_landmarks and self.alignment_info and self.face_mesh.multi_face_landmarks:
+            # FaceMeshのランドマーク取得
+            face_landmarks = self.face_mesh.multi_face_landmarks[0]
+            
+            # 元のランドマーク234と454の位置を描画（赤色の円）
+            original_234_x = int(face_landmarks.landmark[234].x * self.width)
+            original_234_y = int(face_landmarks.landmark[234].y * self.height)
+            original_454_x = int(face_landmarks.landmark[454].x * self.width)
+            original_454_y = int(face_landmarks.landmark[454].y * self.height)
+            
+            cv2.circle(image, (original_234_x, original_234_y), 10, (0, 0, 255), -1)  # 赤色: 元の234
+            cv2.circle(image, (original_454_x, original_454_y), 10, (0, 0, 255), -1)  # 赤色: 元の454
+            cv2.putText(image, "234(org)", (original_234_x + 12, original_234_y), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+            cv2.putText(image, "454(org)", (original_454_x + 12, original_454_y), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+            
+            # 目標位置（FaceDetectionの耳）を描画（青色の円）
+            target_234_x = int(self.alignment_info['right_ear_target'][0])
+            target_234_y = int(self.alignment_info['right_ear_target'][1])
+            target_454_x = int(self.alignment_info['left_ear_target'][0])
+            target_454_y = int(self.alignment_info['left_ear_target'][1])
+            
+            cv2.circle(image, (target_234_x, target_234_y), 10, (255, 0, 0), -1)  # 青色: 目標234
+            cv2.circle(image, (target_454_x, target_454_y), 10, (255, 0, 0), -1)  # 青色: 目標454
+            cv2.putText(image, "Ear4(target)", (target_234_x + 12, target_234_y - 12), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+            cv2.putText(image, "Ear5(target)", (target_454_x + 12, target_454_y - 12), 
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+            
+            # 線で結ぶ
+            cv2.line(image, (original_234_x, original_234_y), (target_234_x, target_234_y), 
+                    (0, 255, 255), 3)  # 黄色の線
+            cv2.line(image, (original_454_x, original_454_y), (target_454_x, target_454_y), 
+                    (0, 255, 255), 3)  # 黄色の線
     
     #
     # 耳の位置からモデルのスケールを計算する関数
@@ -496,6 +567,73 @@ class Application:
             print(f"スケール計算エラー: {e}")
         
         return 1.0
+    
+    #
+    # ランドマーク234と454を耳の位置に合わせる調整情報を計算する関数
+    #
+    def calculate_landmark_alignment(self):
+        """
+        FaceDetectionの耳の位置(キーポイント4,5)に
+        FaceMeshのランドマーク234,454が重なるように調整情報を計算
+        """
+        if not self.use_facelandmark or not hasattr(self, 'face_detection'):
+            return None
+        
+        if not self.face_detection.detections:
+            return None
+        
+        try:
+            # FaceDetectionのキーポイントから耳の位置を取得
+            detection = self.face_detection.detections[0]
+            keypoints = detection.location_data.relative_keypoints
+            
+            # MediaPipe FaceDetectionのキーポイント:
+            # 0: 右目, 1: 左目, 2: 鼻先, 3: 口, 4: 右耳, 5: 左耳
+            if len(keypoints) >= 6 and self.face_mesh.multi_face_landmarks:
+                right_ear_fd = keypoints[4]  # FaceDetectionの右耳
+                left_ear_fd = keypoints[5]   # FaceDetectionの左耳
+                
+                # FaceMeshのランドマーク取得
+                landmarks = self.face_mesh.multi_face_landmarks[0]
+                # ランドマーク234: 顔の右端（右耳付近）
+                # ランドマーク454: 顔の左端（左耳付近）
+                right_face_fm = landmarks.landmark[234]
+                left_face_fm = landmarks.landmark[454]
+                
+                # ピクセル座標に変換
+                right_ear_fd_px = (right_ear_fd.x * self.width, right_ear_fd.y * self.height)
+                left_ear_fd_px = (left_ear_fd.x * self.width, left_ear_fd.y * self.height)
+                right_face_fm_px = (right_face_fm.x * self.width, right_face_fm.y * self.height)
+                left_face_fm_px = (left_face_fm.x * self.width, left_face_fm.y * self.height)
+                
+                # 距離を計算
+                offset_234_x = right_ear_fd_px[0] - right_face_fm_px[0]
+                offset_234_y = right_ear_fd_px[1] - right_face_fm_px[1]
+                offset_454_x = left_ear_fd_px[0] - left_face_fm_px[0]
+                offset_454_y = left_ear_fd_px[1] - left_face_fm_px[1]
+                
+                alignment_info = {
+                    'right_ear_target': right_ear_fd_px,
+                    'left_ear_target': left_ear_fd_px,
+                    'right_face_current': right_face_fm_px,
+                    'left_face_current': left_face_fm_px
+                }
+                
+                print(f"========== ランドマーク位置調整デバッグ情報 ==========")
+                print(f"FaceMesh 234 (元): ({right_face_fm_px[0]:.1f}, {right_face_fm_px[1]:.1f})")
+                print(f"FaceDetection 耳4 (目標): ({right_ear_fd_px[0]:.1f}, {right_ear_fd_px[1]:.1f})")
+                print(f"オフセット234: X={offset_234_x:.1f}px, Y={offset_234_y:.1f}px")
+                print(f"")
+                print(f"FaceMesh 454 (元): ({left_face_fm_px[0]:.1f}, {left_face_fm_px[1]:.1f})")
+                print(f"FaceDetection 耳5 (目標): ({left_ear_fd_px[0]:.1f}, {left_ear_fd_px[1]:.1f})")
+                print(f"オフセット454: X={offset_454_x:.1f}px, Y={offset_454_y:.1f}px")
+                print(f"===================================================")
+                
+                return alignment_info
+        except Exception as e:
+            print(f"ランドマーク位置調整計算エラー: {e}")
+        
+        return None
         
     #
     # キー関数
@@ -578,6 +716,18 @@ class Application:
                 else:
                     self.model_scale_factor = 1.0
                     print("モデル自動スケーリングを無効化しました")
+        
+        # Dでランドマーク位置調整のON/OFF切り替え
+        if action == glfw.PRESS and key == glfw.KEY_D:
+            if not self.use_facelandmark:
+                print("FaceLandmark機能を有効化してください（Fキー）")
+            else:
+                self.adjust_landmarks = not self.adjust_landmarks
+                if self.adjust_landmarks:
+                    print("ランドマーク位置調整を有効化しました（ランドマーク234,454を耳の位置に合わせます）")
+                else:
+                    self.alignment_info = None
+                    print("ランドマーク位置調整を無効化しました")
 
     #
     # モデル設定
