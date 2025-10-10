@@ -48,6 +48,14 @@ class Application:
         self.draw_landmark = draw_landmark
         # FaceLandmark機能を使用するかどうか
         self.use_facelandmark = use_facelandmark
+
+        # モデル自動スケーリング機能
+        self.auto_scale_model = False
+        self.model_scale_factor = 1.0
+        
+        # ランドマーク位置調整機能（右端・左端のみ）
+        self.adjust_landmarks = False
+        self.alignment_info = None
         
         # 録画用変数
         self.use_record = False # 初期値はFalse
@@ -305,6 +313,14 @@ class Application:
             self.angle = angle
             
             #
+            # モデル自動スケーリングが有効な場合、スケールを計算
+            #
+            if self.auto_scale_model and self.use_facelandmark:
+                self.model_scale_factor = self.calculate_model_scale_from_ears()
+            else:
+                self.model_scale_factor = 1.0
+            
+            #
             # マスク着用時、モデルを描画
             #
             if success:
@@ -358,9 +374,10 @@ class Application:
         model_shift_X = 0.0
         model_shift_Y = 0.0
         model_shift_Z = 0.0
-        model_scale_X = 1.0 * scale_x
-        model_scale_Y = 1.0 * scale_y
-        model_scale_Z = 1.0 
+        
+        model_scale_X = 1.0 * scale_x * self.model_scale_factor
+        model_scale_Y = 1.0 * scale_y * self.model_scale_factor
+        model_scale_Z = 1.0 * self.model_scale_factor 
     
         # 世界座標系の描画
         if self.draw_axis:
@@ -425,6 +442,60 @@ class Application:
                                    self.landmark_drawing_spec.circle_radius, 
                                    self.landmark_drawing_spec.color, 
                                    self.landmark_drawing_spec.thickness)
+    
+    #
+    # 耳の位置からモデルのスケールを計算する関数
+    #
+    def calculate_model_scale_from_ears(self):
+        """
+        FaceDetectionの耳の位置(キーポイント4,5)に
+        FaceMeshのランドマーク234,454が完全に重なるようにスケールを計算
+        """
+        if not self.use_facelandmark or not hasattr(self, 'face_detection'):
+            return 1.0
+        
+        if not self.face_detection.detections:
+            return 1.0
+        
+        try:
+            # FaceDetectionのキーポイントから耳の位置を取得
+            detection = self.face_detection.detections[0]
+            keypoints = detection.location_data.relative_keypoints
+            
+            # MediaPipe FaceDetectionのキーポイント:
+            # 0: 右目, 1: 左目, 2: 鼻先, 3: 口, 4: 右耳, 5: 左耳
+            if len(keypoints) >= 6 and self.face_mesh.multi_face_landmarks:
+                right_ear_fd = keypoints[4]  # FaceDetectionの右耳
+                left_ear_fd = keypoints[5]   # FaceDetectionの左耳
+                
+                # FaceMeshのランドマーク取得
+                landmarks = self.face_mesh.multi_face_landmarks[0]
+                # ランドマーク234: 顔の右端（右耳付近）
+                # ランドマーク454: 顔の左端（左耳付近）
+                right_face_fm = landmarks.landmark[234]
+                left_face_fm = landmarks.landmark[454]
+
+                # FaceDetectionの耳の間の距離（正規化座標）
+                ear_distance_fd = abs(left_ear_fd.x - right_ear_fd.x)
+                
+                # FaceMeshのランドマーク234-454の間の距離（正規化座標）
+                face_width_fm = abs(left_face_fm.x - right_face_fm.x)
+                
+                if face_width_fm > 0:
+                    # 水平方向のスケール係数
+                    # FaceMeshの234-454がFaceDetectionの耳の位置に重なるように
+                    scale_factor = ear_distance_fd / face_width_fm
+                    
+                    # スケール係数が極端にならないように制限
+                    scale_factor = max(0.3, min(scale_factor, 3.0))
+                    
+                    print(f"自動スケール: {scale_factor:.2f}")
+                    
+                    return scale_factor
+        except Exception as e:
+            print(f"スケール計算エラー: {e}")
+        
+        return 1.0
         
     #
     # キー関数
@@ -495,6 +566,18 @@ class Application:
                 print("FaceLandmark機能を有効化しました")
             else:
                 print("FaceLandmark機能を無効化しました")
+        
+        # Aでモデル自動スケーリングのON/OFF切り替え
+        if action == glfw.PRESS and key == glfw.KEY_A:
+            if not self.use_facelandmark:
+                print("FaceLandmark機能を有効化してください（Fキー）")
+            else:
+                self.auto_scale_model = not self.auto_scale_model
+                if self.auto_scale_model:
+                    print("モデル自動スケーリングを有効化しました")
+                else:
+                    self.model_scale_factor = 1.0
+                    print("モデル自動スケーリングを無効化しました")
 
     #
     # モデル設定

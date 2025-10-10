@@ -9,6 +9,16 @@ python3.10 main.py
 - 引数
   - texture	    使用するテクスチャ画像のファイルパスを指定します（省略可）
   - draw_landmark	ランドマークを描画する場合に指定します（省略可）
+  - use_facelandmark facelandmarkの機能をONにします（省略可）
+
+- コントロールキー
+ - a:ランドマーク位置調整のON/OFF（FaceLandmark有効時のみ）
+ - t:FaceLandmark機能のON/OFF
+ - p:対応点を変更
+ -  
+
+
+
 
 python3 create_MQO.py [model/nomask.jpg]
 python3.10 /home/misa/lab/mediapipe/normal/create_MQO.py model/nomask.jpg
@@ -63,3 +73,10 @@ PySimpleGUI==5.0.10
 └─test_programs         # 顔認識関連のテスト用プログラム群
 # lab-ishikawa-mediapipe-nomal
 # lab-ishikawa-mediapipe-FaceLandmark
+
+
+
+# コマンド
+- Fキー: FaceLandmark機能の切り替え
+- Pキー: 対応点モードの変更（従来通り）
+

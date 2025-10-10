@@ -148,13 +148,7 @@ class CreateMQO:
             color=(0, 0, 255))
 
         # テクスチャファイル読み込み
-        img_path = "mqodata/"+texture_filename
-        print(f"Loading texture file: {img_path}")
-        img = cv2.imread(img_path)
-        if img is None:
-            print(f"Error: Could not load image file: {img_path}")
-            print("Please check if the file exists and the path is correct.")
-            sys.exit(1)
+        img = cv2.imread("mqodata/"+texture_filename)
         rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         annotated_image = img.copy() 
         
@@ -264,7 +258,8 @@ class CreateMQO:
         data2 = []
         
         # 顔の側面の対応点を削除
-        delete_datalist = [234, 93, 132, 58, 172, 454, 323, 361, 288, 397]
+        #delete_datalist = [234, 93, 132, 58, 172, 454, 323, 361, 288, 397]
+        delete_datalist = []
         # カメラ位置姿勢推定に用いる対応点パターン
 
 
@@ -309,7 +304,7 @@ class CreateMQO:
                           355, 358, 360, 363, 364, 365, 366, 367, 369, 370, 371, 375, 376, 377, 378, 379, 391, 
                           392, 393, 394, 395, 396, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411, 
                           415, 416, 418, 420, 421, 422, 423, 424, 425, 426, 427, 428, 429, 430, 431, 432, 433, 
-                          434, 435, 436, 438, 439, 440, 455, 456, 457, 458, 459, 460, 461, 462]
+                          434, 435, 436, 438, 439, 440, 455, 456, 457, 458, 459, 460, 461, 462,234,454,93, 132, 58, 172, 323, 361, 288, 397]
         
         for j in range(cnt):
             datalist.append(j)
