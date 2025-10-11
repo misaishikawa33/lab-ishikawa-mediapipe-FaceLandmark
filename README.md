@@ -15,7 +15,7 @@ python3.10 main.py
  - a:ランドマーク位置調整のON/OFF（FaceLandmark有効時のみ）
  - t:FaceLandmark機能のON/OFF
  - p:対応点を変更
- -  
+ - d: ランドマーク位置調整を有効化（ランドマーク234と454のみを耳の位置に移動、モデル全体は変更しない）
 
 
 
