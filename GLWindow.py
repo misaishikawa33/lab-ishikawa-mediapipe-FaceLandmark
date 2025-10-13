@@ -36,6 +36,14 @@ class GLWindow:
         # ウィンドウ表示
         glfw.make_context_current(self.window)
 
+        # OpenGLの設定(20251013)
+        # アルファブレンディングを有効化（透明度を有効にする）
+        glEnable(GL_BLEND)
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA)
+        
+        # デプステストを有効化
+        glEnable(GL_DEPTH_TEST)
+
         # メンバ変数の初期化
         self.image  = np.array([])
         self.width  = width

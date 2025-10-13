@@ -188,7 +188,7 @@ class CreateMQO:
         
         # FaceMeshを実行
 
-        print(f"テクスチャー画像: {rgb_img}")
+        # print(f"テクスチャー画像: {rgb_img}")
         face_mesh = face.process(rgb_img)
         
         # 座標、メッシュ情報格納用リスト

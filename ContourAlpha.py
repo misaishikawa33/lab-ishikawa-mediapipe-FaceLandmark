@@ -17,8 +17,8 @@ class ContourAlpha:
     # コンストラクタ
     #
     def __init__(self, texture, use_cut, save_org, use_spline, simple_mode=False):
-        # アルファ値を変更する範囲
-        self.scope = 20
+        # アルファ値を変更する範囲（デフォルト:20）
+        self.scope = 5
         # アルファ値の増分
         self.diff_alpha = 255 / self.scope
         # スプライン補間を行う

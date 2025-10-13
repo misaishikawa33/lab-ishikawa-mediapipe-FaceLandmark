@@ -37,9 +37,22 @@ class Material():
             glBindTexture(GL_TEXTURE_2D,self.textureID)
 
     def load_texture(self,filename, textureID):
-        img = cv2.imread(filename)
+        # アルファチャンネルを含めて画像を読み込む
+        img = cv2.imread(filename, cv2.IMREAD_UNCHANGED)
         img = cv2.flip(img, 0)
-        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+        
+        # チャンネル数を確認してRGBまたはRGBAに変換(20251013)
+        if img.shape[2] == 4:
+            # RGBA画像の場合
+            img = cv2.cvtColor(img, cv2.COLOR_BGRA2RGBA)
+            internal_format = GL_RGBA8
+            format_type = GL_RGBA
+        else:
+            # RGB画像の場合
+            img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            internal_format = GL_RGB8
+            format_type = GL_RGB
+        
         self.textureID = textureID
         glBindTexture(GL_TEXTURE_2D,self.textureID)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
@@ -48,5 +61,5 @@ class Material():
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER,GL_LINEAR)
         glTexEnvf(GL_TEXTURE_ENV,GL_TEXTURE_ENV_MODE,GL_MODULATE)
         height, width = img.shape[:2]
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB8, width, height,
-                     0, GL_RGB, GL_UNSIGNED_BYTE, img)
+        glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height,
+                     0, format_type, GL_UNSIGNED_BYTE, img)
