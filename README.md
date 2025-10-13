@@ -23,7 +23,7 @@ python3.10 main.py
 ## 実行方法(create_MQO)
 ```bash
 python3 create_MQO.py [model/nomask.jpg]
-python3.10 /home/misa/lab/mediapipe/normal/create_MQO.py model/nomask.jpg
+python3.10 create_MQO.py model/nomask.jpg
 ```
 
 ### 引数

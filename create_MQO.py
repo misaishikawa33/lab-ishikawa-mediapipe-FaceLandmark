@@ -13,8 +13,9 @@ class CreateMQO:
     # コンストラクタ
     #
     # @param texture : テクスチャ画像
+    # @param use_alpha : アルファ処理を行うか
     #
-    def __init__(self, texture):
+    def __init__(self, texture, use_alpha=False):
         
         # 顔下部切り取りを行うか
         self.use_cut = True
@@ -23,11 +24,28 @@ class CreateMQO:
         # 世界座標系を記述
         self.world_coordinate = False
         
+        # アルファ処理を行うか
+        self.use_alpha = use_alpha
+        
         # ファイル名用日付
         self.today = str(datetime.date.today()).replace('-','')
         # ファイル作成
         self.mesh = np.loadtxt("mqodata/mesh.dat", dtype='int')
         self.mesh_cut = np.array([])
+        
+        # アルファ処理を実行（set_point の前に実行する必要がある）
+        if self.use_alpha:
+            print("アルファ処理を開始します...")
+            from ContourAlpha import ContourAlpha
+            import os
+            texture_path = f"mqodata/model/{texture}"
+            # simple_mode=Trueで可視化出力なし、save_org=Trueでアルファ処理後の画像を出力
+            ContourAlpha(texture_path, use_cut=self.use_cut, save_org=True, use_spline=False, simple_mode=True)
+            # JPEGからPNGに変換された場合、テクスチャファイル名を更新
+            base_name = os.path.splitext(texture)[0]
+            texture = base_name + '.png'
+            print(f"アルファ処理が完了しました。使用するテクスチャ: {texture}")
+        
         # テクスチャ画像から特徴点、特徴点の正規化、新たなメッシュ情報を生成
         self.data = np.array([])
         self.datalist = []
@@ -148,11 +166,29 @@ class CreateMQO:
             color=(0, 0, 255))
 
         # テクスチャファイル読み込み
-        img = cv2.imread("mqodata/"+texture_filename)
+        # アルファ処理後はmodel/ディレクトリに保存されているので、両方のパスを試す
+        import os
+        texture_path_model = f"mqodata/model/{texture_filename}"
+        texture_path_base = f"mqodata/{texture_filename}"
+        
+        if os.path.exists(texture_path_model):
+            img = cv2.imread(texture_path_model)
+            print(f"テクスチャを読み込みました(アルファ処理あり): {texture_path_model}")
+        elif os.path.exists(texture_path_base):
+            img = cv2.imread(texture_path_base)
+            print(f"テクスチャを読み込みました（アルファ処理なし）: {texture_path_base}")
+        else:
+            raise FileNotFoundError(f"テクスチャファイルが見つかりません: {texture_filename}")
+        
+        if img is None:
+            raise ValueError(f"画像の読み込みに失敗しました: {texture_filename}")
+        
         rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
         annotated_image = img.copy() 
         
         # FaceMeshを実行
+
+        print(f"テクスチャー画像: {rgb_img}")
         face_mesh = face.process(rgb_img)
         
         # 座標、メッシュ情報格納用リスト

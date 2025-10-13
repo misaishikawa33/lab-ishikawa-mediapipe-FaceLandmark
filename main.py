@@ -29,7 +29,7 @@ class Main:
     # (@param kwargs : image = "image_filename"
     #                  texture = "texture_filename")
     #
-    def __init__(self, texture, draw_landmark, use_facelandmark=False):
+    def __init__(self, texture, draw_landmark, use_facelandmark=False, use_alpha=False):
         
         if texture is not None:
             self.take_texture = False
@@ -37,6 +37,9 @@ class Main:
         else:
             self.take_texture = True
             texture_filename = "default.png"
+        
+        # アルファ処理フラグを保持
+        self.use_alpha = use_alpha
         
         # ディスプレイサイズ
         width  = 640
@@ -96,8 +99,31 @@ class Main:
                     # `q`キーを押すと画像を撮影せずにループ終了
                     if cv2.waitKey(1) == ord('q'):
                         break
+                
+                # カメラウィンドウを閉じる
+                cv2.destroyAllWindows()
+                
+                # 画像撮影後、アルファ処理を行うか確認（引数で指定されていない場合のみ）
+                if not use_alpha:  # コマンドライン引数でuse_alphaが指定されていない場合
+                    self.window.close()
+                    layout_alpha = [[sg.Text("テクスチャにアルファ処理を行いますか？")]
+                                   ,[sg.Button('Yes'), sg.Button('No')]]
+                    window_alpha = sg.Window('アルファ処理確認', layout_alpha)
+                    event_alpha, values_alpha = window_alpha.read()
+                    
+                    if event_alpha in (None, 'Cancel', 'No'):
+                        self.use_alpha = False
+                    elif event_alpha == "Yes":
+                        self.use_alpha = True
+                    
+                    window_alpha.close()
+                else:
+                    # コマンドライン引数で指定されている場合はそのまま使用
+                    self.use_alpha = use_alpha
+                    
             elif event == "No":
                 # 画像を撮影せずに、デフォルトのテクスチャ画像を使用
+                texture_filename = "nomask.jpg"
                 pass
             # カメラを閉じる
             self.app.camera.Close()
@@ -106,11 +132,11 @@ class Main:
         
         #
         # モデル読み込み
-        # CreateMQOクラスのインスタンス生成
+        # CreateMQOクラスのインスタンス生成（アルファ処理フラグを渡す）
         #
         print("ok")
         start = time.time()
-        mqo = CreateMQO(texture_filename)
+        mqo = CreateMQO(texture_filename, use_alpha=self.use_alpha)
         model_filename = os.getcwd() +"/"+ mqo.model_filename
         end = time.time()
         msg = 'Creating %s' % model_filename
@@ -178,6 +204,7 @@ if __name__ == '__main__':
     parser.add_argument("--texture", default=None, help = "texture_filename")
     parser.add_argument('--draw_landmark', action='store_true', help = "draw landmark")
     parser.add_argument('--use_facelandmark', action='store_true', help = "enable FaceLandmark processing")
+    parser.add_argument('--use_alpha', action='store_true', help = "enable alpha channel processing for texture")
     args = parser.parse_args()
     
-    Main(args.texture, args.draw_landmark, args.use_facelandmark)
+    Main(args.texture, args.draw_landmark, args.use_facelandmark, args.use_alpha)

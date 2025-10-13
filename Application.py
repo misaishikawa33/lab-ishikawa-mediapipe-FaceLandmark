@@ -403,7 +403,7 @@ class Application:
             # Z軸: 変更なし
             model_shift_Z = 0.0
             
-            print(f"モデル平行移動: X={model_shift_X:.1f}, Y={model_shift_Y:.1f}")
+            # print(f"モデル平行移動: X={model_shift_X:.1f}, Y={model_shift_Y:.1f}")
         
         model_scale_X = 1.0 * scale_x * self.model_scale_factor
         model_scale_Y = 1.0 * scale_y * self.model_scale_factor
@@ -582,7 +582,7 @@ class Application:
                     # スケール係数が極端にならないように制限
                     scale_factor = max(0.3, min(scale_factor, 3.0))
                     
-                    print(f"自動スケール: {scale_factor:.2f}")
+                    # print(f"自動スケール: {scale_factor:.2f}")
                     
                     return scale_factor
         except Exception as e:
@@ -629,10 +629,10 @@ class Application:
                 left_face_fm_px = (left_face_fm.x * self.width, left_face_fm.y * self.height)
                 
                 # 距離を計算
-                offset_234_x = right_ear_fd_px[0] - right_face_fm_px[0]
-                offset_234_y = right_ear_fd_px[1] - right_face_fm_px[1]
-                offset_454_x = left_ear_fd_px[0] - left_face_fm_px[0]
-                offset_454_y = left_ear_fd_px[1] - left_face_fm_px[1]
+                # offset_234_x = right_ear_fd_px[0] - right_face_fm_px[0]
+                # offset_234_y = right_ear_fd_px[1] - right_face_fm_px[1]
+                # offset_454_x = left_ear_fd_px[0] - left_face_fm_px[0]
+                # offset_454_y = left_ear_fd_px[1] - left_face_fm_px[1]
                 
                 alignment_info = {
                     'right_ear_target': right_ear_fd_px,
@@ -641,15 +641,15 @@ class Application:
                     'left_face_current': left_face_fm_px
                 }
                 
-                print(f"========== ランドマーク位置調整デバッグ情報 ==========")
-                print(f"FaceMesh 234 (元): ({right_face_fm_px[0]:.1f}, {right_face_fm_px[1]:.1f})")
-                print(f"FaceDetection 耳4 (目標): ({right_ear_fd_px[0]:.1f}, {right_ear_fd_px[1]:.1f})")
-                print(f"オフセット234: X={offset_234_x:.1f}px, Y={offset_234_y:.1f}px")
-                print(f"")
-                print(f"FaceMesh 454 (元): ({left_face_fm_px[0]:.1f}, {left_face_fm_px[1]:.1f})")
-                print(f"FaceDetection 耳5 (目標): ({left_ear_fd_px[0]:.1f}, {left_ear_fd_px[1]:.1f})")
-                print(f"オフセット454: X={offset_454_x:.1f}px, Y={offset_454_y:.1f}px")
-                print(f"===================================================")
+                # print(f"========== ランドマーク位置調整デバッグ情報 ==========")
+                # print(f"FaceMesh 234 (元): ({right_face_fm_px[0]:.1f}, {right_face_fm_px[1]:.1f})")
+                # print(f"FaceDetection 耳4 (目標): ({right_ear_fd_px[0]:.1f}, {right_ear_fd_px[1]:.1f})")
+                # print(f"オフセット234: X={offset_234_x:.1f}px, Y={offset_234_y:.1f}px")
+                # print(f"")
+                # print(f"FaceMesh 454 (元): ({left_face_fm_px[0]:.1f}, {left_face_fm_px[1]:.1f})")
+                # print(f"FaceDetection 耳5 (目標): ({left_ear_fd_px[0]:.1f}, {left_ear_fd_px[1]:.1f})")
+                # print(f"オフセット454: X={offset_454_x:.1f}px, Y={offset_454_y:.1f}px")
+                # print(f"===================================================")
                 
                 return alignment_info
         except Exception as e:
