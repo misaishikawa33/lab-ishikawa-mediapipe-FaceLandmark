@@ -15,10 +15,17 @@ python3.10 main.py
   - use_facelandmark facelandmarkの機能をONにします（省略可）
 
 ### コントロールキー
- - a:ランドマーク位置調整のON/OFF（FaceLandmark有効時のみ）
- - f:FaceLandmark機能のON/OFF
- - p:対応点を変更
- - d: ランドマーク位置調整を有効化（ランドマーク234と454のみを耳の位置に移動、モデル全体は変更しない）
+ - **f**: FaceLandmark機能のON/OFF（耳の位置検出を有効化）
+ - **d**: 位置調整を有効化（ランドマーク234と454を耳の位置に移動、顔の端を固定）※FaceLandmark有効時のみ
+ - **a**: 自動スケール調整のON/OFF（顔のサイズを耳の距離から自動調整）※FaceLandmark有効時のみ
+ - **p**: 対応点モードを変更（All Points → Upper Points → Selected Points）
+
+### 画面表示
+実行中、画面左上に現在の機能状態が表示されます:
+- **[F] FaceLandmark**: ON/OFF（緑=有効、灰色=無効）
+- **[D] Position Adjust (Fix Edges)**: ON/OFF（緑=有効、灰色=無効、オレンジ=要FaceLandmark）
+- **[A] Auto Scale**: ON/OFF（緑=有効、灰色=無効、オレンジ=要FaceLandmark）
+- **[P] Point Mode**: 現在の対応点モード
 
 ## 実行方法(create_MQO)
 ```bash

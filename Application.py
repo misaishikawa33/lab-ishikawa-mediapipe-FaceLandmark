@@ -262,6 +262,9 @@ class Application:
         # FaceLandmark追加描画
         if self.use_facelandmark:
             self.draw_face_detection(self.image)
+        
+        # ステータス表示を追加
+        self.draw_status_info(self.image)
 
         # 画像を描画するメソッドを実行
         self.glwindow.draw_image(self.image)
@@ -512,10 +515,10 @@ class Application:
             
             cv2.circle(image, (original_234_x, original_234_y), 10, (0, 0, 255), -1)  # 赤色: 元の234
             cv2.circle(image, (original_454_x, original_454_y), 10, (0, 0, 255), -1)  # 赤色: 元の454
-            cv2.putText(image, "234(org)", (original_234_x + 12, original_234_y), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-            cv2.putText(image, "454(org)", (original_454_x + 12, original_454_y), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+            # cv2.putText(image, "234(org)", (original_234_x + 12, original_234_y), 
+            #            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
+            # cv2.putText(image, "454(org)", (original_454_x + 12, original_454_y), 
+            #            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
             
             # 目標位置（FaceDetectionの耳）を描画（青色の円）
             target_234_x = int(self.alignment_info['right_ear_target'][0])
@@ -525,10 +528,10 @@ class Application:
             
             cv2.circle(image, (target_234_x, target_234_y), 10, (255, 0, 0), -1)  # 青色: 目標234
             cv2.circle(image, (target_454_x, target_454_y), 10, (255, 0, 0), -1)  # 青色: 目標454
-            cv2.putText(image, "Ear4(target)", (target_234_x + 12, target_234_y - 12), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
-            cv2.putText(image, "Ear5(target)", (target_454_x + 12, target_454_y - 12), 
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+            # cv2.putText(image, "Ear4(target)", (target_234_x + 12, target_234_y - 12), 
+            #            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+            # cv2.putText(image, "Ear5(target)", (target_454_x + 12, target_454_y - 12), 
+            #            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
             
             # 線で結ぶ
             cv2.line(image, (original_234_x, original_234_y), (target_234_x, target_234_y), 
@@ -916,3 +919,66 @@ class Application:
     def set_image(self, image):
         image = cv2.cvtColor (image, cv2.COLOR_BGR2RGB)
         self.image = image
+
+    #
+    # 現在の状態を画面に表示する関数
+    #
+    def draw_status_info(self, image):
+        """
+        画面右上に現在の機能ON/OFF状態を表示
+        """
+        # 背景の半透明ボックスを描画（見やすくするため）
+        # 右上に配置
+        box_x1 = self.width - 410  # 右端から410ピクセル左
+        box_y1 = 10
+        box_x2 = self.width - 10   # 右端から10ピクセル左
+        box_y2 = 150
+        
+        overlay = image.copy()
+        cv2.rectangle(overlay, (box_x1, box_y1), (box_x2, box_y2), (0, 0, 0), -1)
+        cv2.addWeighted(overlay, 0.6, image, 0.4, 0, image)
+        
+        # テキストのX座標（ボックスの左端から少し右）
+        text_x = box_x1 + 10
+        y_offset = 30
+        line_height = 30
+        
+        # タイトル
+        cv2.putText(image, "=== Status ===", (text_x, y_offset),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        y_offset += line_height
+        
+        # FaceLandmark機能の状態 (Fキー)
+        face_landmark_status = "ON" if self.use_facelandmark else "OFF"
+        face_landmark_color = (0, 255, 0) if self.use_facelandmark else (128, 128, 128)
+        cv2.putText(image, f"[F] FaceLandmark: {face_landmark_status}", (text_x, y_offset),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, face_landmark_color, 1)
+        y_offset += line_height
+        
+        # 位置調整機能の状態 (Dキー)
+        adjust_status = "ON" if self.adjust_landmarks else "OFF"
+        adjust_color = (0, 255, 0) if self.adjust_landmarks else (128, 128, 128)
+        status_text = f"[D] Position Adjust (Fix Edges): {adjust_status}"
+        if self.adjust_landmarks and not self.use_facelandmark:
+            status_text += " (Need F key ON)"
+            adjust_color = (0, 165, 255)  # オレンジ色
+        cv2.putText(image, status_text, (text_x, y_offset),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, adjust_color, 1)
+        y_offset += line_height
+        
+        # 自動スケール機能の状態 (Aキー)
+        scale_status = "ON" if self.auto_scale_model else "OFF"
+        scale_color = (0, 255, 0) if self.auto_scale_model else (128, 128, 128)
+        status_text = f"[A] Auto Scale: {scale_status}"
+        if self.auto_scale_model and not self.use_facelandmark:
+            status_text += " (Need F key ON)"
+            scale_color = (0, 165, 255)  # オレンジ色
+        cv2.putText(image, status_text, (text_x, y_offset),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, scale_color, 1)
+        y_offset += line_height
+        
+        # 対応点モード (Pキー)
+        point_mode_names = {0: "All Points", 1: "Upper Points", 2: "Selected Points"}
+        point_mode = point_mode_names.get(self.detect_stable, "Unknown")
+        cv2.putText(image, f"[P] Point Mode: {point_mode}", (text_x, y_offset),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
