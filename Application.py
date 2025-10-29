@@ -57,6 +57,14 @@ class Application:
         self.adjust_landmarks = False
         self.alignment_info = None
         
+        # Face Landmarker機能
+        self.use_face_landmarker = False
+        self.face_landmarker = None
+        self.face_landmarker_results = None
+        
+        # モデル描画制御
+        self.draw_model_flag = True  # モデル描画のON/OFF
+        
         # 録画用変数
         self.use_record = False # 初期値はFalse
         self.video = None
@@ -137,6 +145,15 @@ class Application:
                 circle_radius = 2, 
                 color = (0, 255, 0))
             print("FaceLandmark機能が有効化されました")
+        
+        #
+        # Face Landmarker機能の初期化
+        #
+        self.face_landmarker_solution = None
+        self.face_landmarker_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
+            thickness = 2, 
+            circle_radius = 3, 
+            color = (255, 0, 255))  # マゼンタ色
         
         #
         # マスク着用有無の推論モデルYOLOv8(未使用)
@@ -250,6 +267,18 @@ class Application:
             self.face_detection = self.face_landmark_solution.process(self.image)
         
         #
+        # Face Landmarker処理
+        #
+        if self.use_face_landmarker and self.face_landmarker_solution:
+            try:
+                # MediaPipe image format に変換
+                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=self.image)
+                self.face_landmarker_results = self.face_landmarker_solution.detect(mp_image)
+            except Exception as e:
+                print(f"Face Landmarker処理エラー: {e}")
+                self.face_landmarker_results = None
+        
+        #
         # 画像の描画を実行
         #
         self.image.flags.writeable = True
@@ -262,6 +291,10 @@ class Application:
         # FaceLandmark追加描画
         if self.use_facelandmark:
             self.draw_face_detection(self.image)
+        
+        # Face Landmarker描画
+        if self.use_face_landmarker:
+            self.draw_face_landmarker(self.image)
         
         # ステータス表示を追加
         self.draw_status_info(self.image)
@@ -540,6 +573,44 @@ class Application:
                     (0, 255, 255), 3)  # 黄色の線
     
     #
+    # Face Landmarker検出結果を画像上に描画する関数
+    #
+    def draw_face_landmarker(self, image):
+        """
+        Face Landmarkerの検出結果を描画
+        """
+        if (hasattr(self, 'face_landmarker_results') and 
+            self.face_landmarker_results and 
+            hasattr(self.face_landmarker_results, 'face_landmarks') and
+            self.face_landmarker_results.face_landmarks):
+            
+            for face_landmarks in self.face_landmarker_results.face_landmarks:
+                # 全ての顔ランドマークを描画
+                for idx, landmark in enumerate(face_landmarks):
+                    # 正規化座標をピクセル座標に変換
+                    x = int(landmark.x * self.width)
+                    y = int(landmark.y * self.height)
+                    
+                    # ランドマークを円で描画（マゼンタ色）
+                    cv2.circle(image, (x, y), 
+                               self.face_landmarker_drawing_spec.circle_radius, 
+                               self.face_landmarker_drawing_spec.color, 
+                               self.face_landmarker_drawing_spec.thickness)
+                    
+                    # ランドマーク番号を表示
+                    if idx % 10 == 0:  # 10個おきに番号を表示（見やすくするため）
+                        cv2.putText(image, str(idx), (x + 5, y - 5), 
+                                   cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 0, 255), 1)
+            
+            face_count = len(self.face_landmarker_results.face_landmarks)
+            cv2.putText(image, f"Face Landmarker: {face_count} face(s) detected", 
+                       (10, self.height - 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 255), 2)
+        else:
+            # Face Landmarkerが無効または検出結果がない場合
+            cv2.putText(image, "Face Landmarker: No faces detected", 
+                       (10, self.height - 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (128, 128, 128), 2)
+    
+    #
     # 耳の位置からモデルのスケールを計算する関数
     #
     def calculate_model_scale_from_ears(self):
@@ -761,6 +832,37 @@ class Application:
                 print("FaceMesh描画を有効化しました")
             else:
                 print("FaceMesh描画を無効化しました")
+        
+        # LでFace Landmarker機能のON/OFF切り替え
+        if action == glfw.PRESS and key == glfw.KEY_L:
+            self.use_face_landmarker = not self.use_face_landmarker
+            if self.use_face_landmarker:
+                # Face Landmarker機能を有効化
+                if not self.face_landmarker_solution:
+                    try:
+                        # MediaPipe Face Landmarkerの初期化
+                        from mediapipe.tasks import python
+                        from mediapipe.tasks.python import vision
+                        
+                        # Face Landmarkerのベースオプション
+                        base_options = python.BaseOptions(
+                            model_asset_path='face_landmarker.task')
+                        options = vision.FaceLandmarkerOptions(
+                            base_options=base_options,
+                            output_face_blendshapes=False,
+                            output_facial_transformation_matrixes=False,
+                            num_faces=1)
+                        self.face_landmarker_solution = vision.FaceLandmarker.create_from_options(options)
+                        print("Face Landmarker機能を有効化しました")
+                    except Exception as e:
+                        print(f"Face Landmarkerの初期化に失敗しました: {e}")
+                        print("モデルファイル 'face_landmarker.task' が必要です")
+                        self.face_landmarker_solution = None
+                        self.use_face_landmarker = False
+                else:
+                    print("Face Landmarker機能を有効化しました")
+            else:
+                print("Face Landmarker機能を無効化しました")
 
     #
     # モデル設定
@@ -940,7 +1042,7 @@ class Application:
         box_x1 = self.width - 410  # 右端から410ピクセル左
         box_y1 = 10
         box_x2 = self.width - 10   # 右端から10ピクセル左
-        box_y2 = 180  # 行を追加したので高さを増やす
+        box_y2 = 210  # Face Landmarker行を追加したので高さを増やす
         
         overlay = image.copy()
         cv2.rectangle(overlay, (box_x1, box_y1), (box_x2, box_y2), (0, 0, 0), -1)
@@ -968,6 +1070,13 @@ class Application:
         face_landmark_color = (0, 255, 0) if self.use_facelandmark else (128, 128, 128)
         cv2.putText(image, f"[F] FaceLandmark: {face_landmark_status}", (text_x, y_offset),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, face_landmark_color, 1)
+        y_offset += line_height
+        
+        # Face Landmarker機能の状態 (Lキー)
+        face_landmarker_status = "ON" if self.use_face_landmarker else "OFF"
+        face_landmarker_color = (0, 255, 0) if self.use_face_landmarker else (128, 128, 128)
+        cv2.putText(image, f"[L] Face Landmarker: {face_landmarker_status}", (text_x, y_offset),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, face_landmarker_color, 1)
         y_offset += line_height
         
         # 位置調整機能の状態 (Dキー)

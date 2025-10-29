@@ -16,13 +16,17 @@ python3.10 main.py
 
 ### コントロールキー
  - **f**: FaceLandmark機能のON/OFF（耳の位置検出を有効化）
+ - **l**: Face Landmarker機能のON/OFF（高精度顔ランドマーク検出、マゼンタ色で描画）
  - **d**: 位置調整を有効化（ランドマーク234と454を耳の位置に移動、顔の端を固定）※FaceLandmark有効時のみ
  - **a**: 自動スケール調整のON/OFF（顔のサイズを耳の距離から自動調整）※FaceLandmark有効時のみ
+ - **m**: FaceMesh描画のON/OFF（478個のランドマーク描画）
  - **p**: 対応点モードを変更（All Points → Upper Points → Selected Points）
 
 ### 画面表示
-実行中、画面左上に現在の機能状態が表示されます:
+実行中、画面右上に現在の機能状態が表示されます:
+- **[M] FaceMesh Draw**: ON/OFF（緑=有効、灰色=無効）
 - **[F] FaceLandmark**: ON/OFF（緑=有効、灰色=無効）
+- **[L] Face Landmarker**: ON/OFF（緑=有効、灰色=無効）
 - **[D] Position Adjust (Fix Edges)**: ON/OFF（緑=有効、灰色=無効、オレンジ=要FaceLandmark）
 - **[A] Auto Scale**: ON/OFF（緑=有効、灰色=無効、オレンジ=要FaceLandmark）
 - **[P] Point Mode**: 現在の対応点モード
@@ -50,6 +54,10 @@ python3.10 create_MQO.py model/nomask.jpg
 - PyOpenGL==3.1.7
 - PyOpenGL-accelerate==3.1.7
 - PySimpleGUI==5.0.10
+
+## 必要なモデルファイル
+- **face_landmarker.task**: MediaPipe Face Landmarker用モデルファイル（プロジェクトルートに配置）
+  - 自動ダウンロードスクリプト: `python3 download_model.py`
 
 ## ファイル構成
 
