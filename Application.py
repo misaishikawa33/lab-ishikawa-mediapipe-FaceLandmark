@@ -253,6 +253,22 @@ class Application:
         # 画像の描画を実行
         #
         self.image.flags.writeable = True
+        
+        # 
+        # カメラ姿勢推定前にランドマークを調整
+        # (姿勢推定にも調整を反映させる)
+        #
+        if self.adjust_landmarks and self.use_facelandmark and self.face_mesh.multi_face_landmarks:
+            # 調整情報を先に計算
+            self.alignment_info = self.calculate_landmark_alignment()
+            if self.alignment_info:
+                # ランドマークを調整（元のデータを上書き）
+                import copy
+                for face_landmarks in self.face_mesh.multi_face_landmarks:
+                    face_landmarks.landmark[234].x = self.alignment_info['right_ear_target'][0] / self.width
+                    face_landmarks.landmark[234].y = self.alignment_info['right_ear_target'][1] / self.height
+                    face_landmarks.landmark[454].x = self.alignment_info['left_ear_target'][0] / self.width
+                    face_landmarks.landmark[454].y = self.alignment_info['left_ear_target'][1] / self.height
 
         # ランドマークの描画
         if self.draw_landmark:
@@ -322,14 +338,6 @@ class Application:
                 self.model_scale_factor = self.calculate_model_scale_from_ears()
             else:
                 self.model_scale_factor = 1.0
-            
-            #
-            # ランドマーク位置調整が有効な場合、調整情報を計算
-            #
-            if self.adjust_landmarks and self.use_facelandmark:
-                self.alignment_info = self.calculate_landmark_alignment()
-            else:
-                self.alignment_info = None
             
             #
             # マスク着用時、モデルを描画
@@ -450,36 +458,14 @@ class Application:
     def draw_landmarks(self, image):
         if self.face_mesh.multi_face_landmarks:
             for face_landmarks in self.face_mesh.multi_face_landmarks:
-                # ランドマーク位置調整が有効な場合、234と454の座標を調整
-                if self.adjust_landmarks and self.alignment_info:
-                    # ランドマークのコピーを作成
-                    import copy
-                    landmarks_copy = copy.deepcopy(face_landmarks)
-                    
-                    # ランドマーク234（右端）をFaceDetectionの右耳に合わせる
-                    landmarks_copy.landmark[234].x = self.alignment_info['right_ear_target'][0] / self.width
-                    landmarks_copy.landmark[234].y = self.alignment_info['right_ear_target'][1] / self.height
-                    
-                    # ランドマーク454（左端）をFaceDetectionの左耳に合わせる
-                    landmarks_copy.landmark[454].x = self.alignment_info['left_ear_target'][0] / self.width
-                    landmarks_copy.landmark[454].y = self.alignment_info['left_ear_target'][1] / self.height
-                    
-                    mp.solutions.drawing_utils.draw_landmarks(
-                        image,
-                        landmarks_copy,
-                        # 描画モード
-                        mp.solutions.face_mesh.FACEMESH_TESSELATION,
-                        self.drawing_spec,
-                        self.drawing_spec)
-                else:
-                    # 通常の描画
-                    mp.solutions.drawing_utils.draw_landmarks(
-                        image,
-                        face_landmarks,
-                        # 描画モード
-                        mp.solutions.face_mesh.FACEMESH_TESSELATION,
-                        self.drawing_spec,
-                        self.drawing_spec)
+                # 通常の描画（既にdisplay_func内で調整済み）
+                mp.solutions.drawing_utils.draw_landmarks(
+                    image,
+                    face_landmarks,
+                    # 描画モード
+                    mp.solutions.face_mesh.FACEMESH_TESSELATION,
+                    self.drawing_spec,
+                    self.drawing_spec)
     
     #
     # FaceLandmark検出結果を画像上に描画する関数（バウンディングボックスなし）
@@ -753,6 +739,14 @@ class Application:
                 else:
                     self.alignment_info = None
                     print("ランドマーク位置調整を無効化しました")
+        
+        # MでFaceMesh描画のON/OFF切り替え
+        if action == glfw.PRESS and key == glfw.KEY_M:
+            self.draw_landmark = not self.draw_landmark
+            if self.draw_landmark:
+                print("FaceMesh描画を有効化しました")
+            else:
+                print("FaceMesh描画を無効化しました")
 
     #
     # モデル設定
@@ -932,7 +926,7 @@ class Application:
         box_x1 = self.width - 410  # 右端から410ピクセル左
         box_y1 = 10
         box_x2 = self.width - 10   # 右端から10ピクセル左
-        box_y2 = 150
+        box_y2 = 180  # 行を追加したので高さを増やす
         
         overlay = image.copy()
         cv2.rectangle(overlay, (box_x1, box_y1), (box_x2, box_y2), (0, 0, 0), -1)
@@ -946,6 +940,13 @@ class Application:
         # タイトル
         cv2.putText(image, "=== Status ===", (text_x, y_offset),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
+        y_offset += line_height
+        
+        # FaceMesh描画の状態 (Mキー)
+        mesh_status = "ON" if self.draw_landmark else "OFF"
+        mesh_color = (0, 255, 0) if self.draw_landmark else (128, 128, 128)
+        cv2.putText(image, f"[M] FaceMesh Draw: {mesh_status}", (text_x, y_offset),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, mesh_color, 1)
         y_offset += line_height
         
         # FaceLandmark機能の状態 (Fキー)
