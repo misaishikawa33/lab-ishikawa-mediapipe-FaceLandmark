@@ -367,7 +367,7 @@ class Application:
             #
             # マスク着用時、モデルを描画
             #
-            if success:
+            if success and self.draw_model_flag:
                 self.draw_model()
     
         else:
@@ -863,6 +863,14 @@ class Application:
                     print("Face Landmarker機能を有効化しました")
             else:
                 print("Face Landmarker機能を無効化しました")
+        
+        # Nでモデル描画のON/OFF切り替え
+        if action == glfw.PRESS and key == glfw.KEY_N:
+            self.draw_model_flag = not self.draw_model_flag
+            if self.draw_model_flag:
+                print("3Dモデル描画を有効化しました")
+            else:
+                print("3Dモデル描画を無効化しました")
 
     #
     # モデル設定
@@ -1042,7 +1050,7 @@ class Application:
         box_x1 = self.width - 410  # 右端から410ピクセル左
         box_y1 = 10
         box_x2 = self.width - 10   # 右端から10ピクセル左
-        box_y2 = 210  # Face Landmarker行を追加したので高さを増やす
+        box_y2 = 240  # モデル描画行を追加したので高さを増やす
         
         overlay = image.copy()
         cv2.rectangle(overlay, (box_x1, box_y1), (box_x2, box_y2), (0, 0, 0), -1)
@@ -1099,6 +1107,13 @@ class Application:
             scale_color = (0, 165, 255)  # オレンジ色
         cv2.putText(image, status_text, (text_x, y_offset),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, scale_color, 1)
+        y_offset += line_height
+        
+        # モデル描画機能の状態 (Nキー)
+        model_draw_status = "ON" if self.draw_model_flag else "OFF"
+        model_draw_color = (0, 255, 0) if self.draw_model_flag else (128, 128, 128)
+        cv2.putText(image, f"[N] 3D Model Draw: {model_draw_status}", (text_x, y_offset),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, model_draw_color, 1)
         y_offset += line_height
         
         # 対応点モード (Pキー)

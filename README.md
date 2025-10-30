@@ -20,6 +20,7 @@ python3.10 main.py
  - **d**: 位置調整を有効化（ランドマーク234と454を耳の位置に移動、顔の端を固定）※FaceLandmark有効時のみ
  - **a**: 自動スケール調整のON/OFF（顔のサイズを耳の距離から自動調整）※FaceLandmark有効時のみ
  - **m**: FaceMesh描画のON/OFF（478個のランドマーク描画）
+ - **n**: 3Dモデル描画のON/OFF（3次元モデルの表示切り替え）
  - **p**: 対応点モードを変更（All Points → Upper Points → Selected Points）
 
 ### 画面表示
@@ -29,6 +30,7 @@ python3.10 main.py
 - **[L] Face Landmarker**: ON/OFF（緑=有効、灰色=無効）
 - **[D] Position Adjust (Fix Edges)**: ON/OFF（緑=有効、灰色=無効、オレンジ=要FaceLandmark）
 - **[A] Auto Scale**: ON/OFF（緑=有効、灰色=無効、オレンジ=要FaceLandmark）
+- **[N] 3D Model Draw**: ON/OFF（緑=有効、灰色=無効）
 - **[P] Point Mode**: 現在の対応点モード
 
 ## 実行方法(create_MQO)
