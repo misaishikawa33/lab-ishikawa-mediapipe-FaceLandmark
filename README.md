@@ -12,24 +12,40 @@ python3.10 main.py
 ### 引数
   - texture	    使用するテクスチャ画像のファイルパスを指定します（省略可）
   - draw_landmark	ランドマークを描画する場合に指定します（省略可）
-  - use_facelandmark facelandmarkの機能をONにします（省略可）
+  - use_facedetector Face Detector機能を起動時にONにします（省略可）
 
 ### コントロールキー
- - **f**: FaceLandmark機能のON/OFF（耳の位置検出を有効化）
+ - **f**: Face Detecter機能のON/OFF（耳の位置検出を有効化）
  - **l**: Face Landmarker機能のON/OFF（高精度顔ランドマーク検出、マゼンタ色で描画）
- - **d**: 位置調整を有効化（ランドマーク234と454を耳の位置に移動、顔の端を固定）※FaceLandmark有効時のみ
- - **a**: 自動スケール調整のON/OFF（顔のサイズを耳の距離から自動調整）※FaceLandmark有効時のみ
+ - **d**: 位置調整を有効化（ランドマーク234と454を耳の位置に移動、顔の端を固定）※Face Detecter有効時のみ
+ - **a**: 自動スケール調整のON/OFF（顔のサイズを耳の距離から自動調整）※Face Detecter有効時のみ
  - **m**: FaceMesh描画のON/OFF（478個のランドマーク描画）
  - **p**: 対応点モードを変更（All Points → Upper Points → Selected Points）
+ - **c**: 姿勢比較モードのON/OFF（PnP方式とFace Landmarker方式の同時実行・比較）
+ - **t**: ステータス表示モードの切り替え（コンパクト表示 → 詳細表示 → コンソール表示のみ）
+ - **1-9**: Face Landmarkerのスケール調整（手動調整）
 
 ### 画面表示
 実行中、画面右上に現在の機能状態が表示されます:
 - **[M] FaceMesh Draw**: ON/OFF（緑=有効、灰色=無効）
-- **[F] FaceLandmark**: ON/OFF（緑=有効、灰色=無効）
-- **[L] Face Landmarker**: ON/OFF（緑=有効、灰色=無効）
-- **[D] Position Adjust (Fix Edges)**: ON/OFF（緑=有効、灰色=無効、オレンジ=要FaceLandmark）
-- **[A] Auto Scale**: ON/OFF（緑=有効、灰色=無効、オレンジ=要FaceLandmark）
+- **[F] Face Detecter**: ON/OFF（緑=有効、灰色=無効）
+- **[L] Face Detector**: ON/OFF（緑=有効、灰色=無効）
+- **[D] Position Adjust (Fix Edges)**: ON/OFF（緑=有効、灰色=無効、オレンジ=要Face Detecter）
+- **[A] Auto Scale**: ON/OFF（緑=有効、灰色=無効、オレンジ=要Face Detecter）
 - **[P] Point Mode**: 現在の対応点モード
+- **[C] Pose Comparison**: ON/OFF（緑=有効、灰色=無効）
+- **[T] Status Display**: 表示モード（コンパクト/詳細/コンソール）
+
+#### ステータス表示モード
+- **コンパクト**: 有効な機能のみ表示（例：ON: FaceMesh, Face Detector）
+- **詳細**: 全機能の状態を詳細表示
+- **コンソール**: 画面表示なし、コンソール出力のみ
+
+#### 姿勢比較機能
+**C**キーで有効化すると、従来のPnP方式とFace Landmarker方式の両方で同時に姿勢推定を実行し、結果を比較できます:
+- リアルタイムで両方式の推定結果を表示
+- 比較結果は自動的にファイル保存（`output/pose_comparison_YYYYMMDD_N.txt`）
+- ファイルには各方式のオイラー角、成功/失敗状態、角度差分などの詳細情報を記録
 
 ## 実行方法(create_MQO)
 ```bash
