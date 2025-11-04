@@ -32,7 +32,7 @@ class Application:
     # @param width    : 画像の横サイズ
     # @param height   : 画像の縦サイズ
     #
-    def __init__(self, title, width, height, use_api, draw_landmark, use_facelandmark=False):
+    def __init__(self, title, width, height, use_api, draw_landmark, use_facedetector=False):
         self.width   = width
         self.height  = height
         self.channel = 3
@@ -46,8 +46,8 @@ class Application:
         self.detect_stable = 0
         # 顔のランドマークを記述するかどうか
         self.draw_landmark = draw_landmark
-        # FaceLandmark機能を使用するかどうか
-        self.use_facelandmark = use_facelandmark
+        # Face Detector機能を使用するかどうか
+        self.use_facedetector = use_facedetector
 
         # モデル自動スケーリング機能
         self.auto_scale_model = False
@@ -64,6 +64,18 @@ class Application:
         
         # モデル描画制御
         self.draw_model_flag = True  # モデル描画のON/OFF
+        
+        # 比較モード関連
+        self.comparison_mode = False
+        self.comparison_results = []
+        self.use_direct_pose = False  # Face Landmarkerの直接姿勢推定
+        
+        # ステータス表示モード (0:コンパクト, 1:詳細, 2:コンソール)
+        self.status_display_mode = 0
+        self.console_printed = False
+        
+        # Face Landmarkerスケール係数
+        self.face_landmarker_scale = 1.0
         
         # 録画用変数
         self.use_record = False # 初期値はFalse
@@ -128,23 +140,23 @@ class Application:
             circle_radius = 1)
         
         #
-        # FaceLandmark追加機能
+        # Face Detector追加機能
         #
-        if self.use_facelandmark:
-            # より高精度なFaceLandmark設定,
+        if self.use_facedetector:
+            # より高精度なFace Detector設定,
             # 近距離model_selection=0, 遠距離model_selection=1
             #model_selectionは信頼度x以上を顔とする
 
-            self.face_landmark_solution = mp.solutions.face_detection.FaceDetection(
+            self.face_detector_solution = mp.solutions.face_detection.FaceDetection(
                 model_selection=0, 
                 min_detection_confidence=0.5)
             
             # 追加のランドマーク描画設定
-            self.landmark_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
+            self.detector_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
                 thickness = 2, 
                 circle_radius = 2, 
                 color = (0, 255, 0))
-            print("FaceLandmark機能が有効化されました")
+            print("Face Detector機能が有効化されました")
         
         #
         # Face Landmarker機能の初期化
@@ -261,10 +273,10 @@ class Application:
         self.face_mesh = self.face_mesh_solution.process(self.image)
         
         #
-        # FaceLandmark追加処理
+        # Face Detector追加処理
         #
-        if self.use_facelandmark:
-            self.face_detection = self.face_landmark_solution.process(self.image)
+        if self.use_facedetector:
+            self.face_detection = self.face_detector_solution.process(self.image)
         
         #
         # Face Landmarker処理
@@ -288,8 +300,8 @@ class Application:
             # ランドマークを描画するメソッドを実行
             self.draw_landmarks(self.image)
         
-        # FaceLandmark追加描画
-        if self.use_facelandmark:
+        # Face Detector追加描画
+        if self.use_facedetector:
             self.draw_face_detection(self.image)
         
         # Face Landmarker描画
@@ -345,13 +357,18 @@ class Application:
             #
             # カメラ位置、姿勢計算
             #
-            success, vector, angle = self.compute_camera_pose(point_2D, point_3D)
+            if self.comparison_mode:
+                # 比較モードが有効な場合、両方の方式を実行
+                success, vector, angle = self.compute_pose_comparison(point_2D, point_3D)
+            else:
+                # 通常のPnP方式のみ実行
+                success, vector, angle = self.compute_camera_pose(point_2D, point_3D)
             self.angle = angle
             
             #
             # モデル自動スケーリングが有効な場合、スケールを計算
             #
-            if self.auto_scale_model and self.use_facelandmark:
+            if self.auto_scale_model and self.use_facedetector:
                 self.model_scale_factor = self.calculate_model_scale_from_ears()
             else:
                 self.model_scale_factor = 1.0
@@ -359,7 +376,7 @@ class Application:
             #
             # ランドマーク位置調整が有効な場合、調整情報を計算
             #
-            if self.adjust_landmarks and self.use_facelandmark:
+            if self.adjust_landmarks and self.use_facedetector:
                 self.alignment_info = self.calculate_landmark_alignment()
             else:
                 self.alignment_info = None
@@ -515,7 +532,7 @@ class Application:
                         self.drawing_spec)
     
     #
-    # FaceLandmark検出結果を画像上に描画する関数（バウンディングボックスなし）
+    # Face Detector検出結果を画像上に描画する関数（バウンディングボックスなし）
     #
     def draw_face_detection(self, image):
         if self.face_detection.detections:
@@ -528,9 +545,9 @@ class Application:
                         y = int(keypoint.y * self.height)
                         # キーポイントを円で描画
                         cv2.circle(image, (x, y), 
-                                   self.landmark_drawing_spec.circle_radius, 
-                                   self.landmark_drawing_spec.color, 
-                                   self.landmark_drawing_spec.thickness)
+                                   self.detector_drawing_spec.circle_radius, 
+                                   self.detector_drawing_spec.color, 
+                                   self.detector_drawing_spec.thickness)
                         # キーポイント番号を表示
                         cv2.putText(image, str(idx), (x + 5, y - 5), 
                                    cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
@@ -618,7 +635,7 @@ class Application:
         FaceDetectionの耳の位置(キーポイント4,5)に
         FaceMeshのランドマーク234,454が完全に重なるようにスケールを計算
         """
-        if not self.use_facelandmark or not hasattr(self, 'face_detection'):
+        if not self.use_facedetector or not hasattr(self, 'face_detection'):
             return 1.0
         
         if not self.face_detection.detections:
@@ -672,7 +689,7 @@ class Application:
         FaceDetectionの耳の位置(キーポイント4,5)に
         FaceMeshのランドマーク234,454が重なるように調整情報を計算
         """
-        if not self.use_facelandmark or not hasattr(self, 'face_detection'):
+        if not self.use_facedetector or not hasattr(self, 'face_detection'):
             return None
         
         if not self.face_detection.detections:
@@ -784,27 +801,27 @@ class Application:
             else:
                 pass
         
-        # FでFaceLandmark機能のON/OFF切り替え
+        # FでFace Detector機能のON/OFF切り替え
         if action == glfw.PRESS and key == glfw.KEY_F:
-            self.use_facelandmark = not self.use_facelandmark
-            if self.use_facelandmark:
-                # FaceLandmark機能を有効化
-                if not hasattr(self, 'face_landmark_solution'):
-                    self.face_landmark_solution = mp.solutions.face_detection.FaceDetection(
+            self.use_facedetector = not self.use_facedetector
+            if self.use_facedetector:
+                # Face Detector機能を有効化
+                if not hasattr(self, 'face_detector_solution'):
+                    self.face_detector_solution = mp.solutions.face_detection.FaceDetection(
                         model_selection=0, 
                         min_detection_confidence=0.5)
-                    self.landmark_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
+                    self.detector_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
                         thickness = 2, 
                         circle_radius = 2, 
                         color = (0, 255, 0))
-                print("FaceLandmark機能を有効化しました")
+                print("Face Detector機能を有効化しました")
             else:
-                print("FaceLandmark機能を無効化しました")
+                print("Face Detector機能を無効化しました")
         
         # Aでモデル自動スケーリングのON/OFF切り替え
         if action == glfw.PRESS and key == glfw.KEY_A:
-            if not self.use_facelandmark:
-                print("FaceLandmark機能を有効化してください（Fキー）")
+            if not self.use_facedetector:
+                print("Face Detector機能を有効化してください（Fキー）")
             else:
                 self.auto_scale_model = not self.auto_scale_model
                 if self.auto_scale_model:
@@ -815,8 +832,8 @@ class Application:
         
         # Dでランドマーク位置調整のON/OFF切り替え
         if action == glfw.PRESS and key == glfw.KEY_D:
-            if not self.use_facelandmark:
-                print("FaceLandmark機能を有効化してください（Fキー）")
+            if not self.use_facedetector:
+                print("Face Detector機能を有効化してください（Fキー）")
             else:
                 self.adjust_landmarks = not self.adjust_landmarks
                 if self.adjust_landmarks:
@@ -850,7 +867,7 @@ class Application:
                         options = vision.FaceLandmarkerOptions(
                             base_options=base_options,
                             output_face_blendshapes=False,
-                            output_facial_transformation_matrixes=False,
+                            output_facial_transformation_matrixes=True,  # 変換行列を有効化
                             num_faces=1)
                         self.face_landmarker_solution = vision.FaceLandmarker.create_from_options(options)
                         print("Face Landmarker機能を有効化しました")
@@ -863,6 +880,33 @@ class Application:
                     print("Face Landmarker機能を有効化しました")
             else:
                 print("Face Landmarker機能を無効化しました")
+        
+        # Cで比較モードのON/OFF切り替え
+        if action == glfw.PRESS and key == glfw.KEY_C:
+            if not hasattr(self, 'comparison_mode'):
+                self.comparison_mode = False
+                self.comparison_results = []
+            
+            self.comparison_mode = not self.comparison_mode
+            if self.comparison_mode:
+                print("姿勢比較モードを有効化しました（PnP vs Face Landmarker）")
+                # 保存フラグをリセット（新しい比較セッション開始）
+                self.comparison_saved = False
+            else:
+                print("姿勢比較モードを無効化しました")
+        
+        # Tでステータス表示モードの切り替え
+        if action == glfw.PRESS and key == glfw.KEY_T:
+            if not hasattr(self, 'status_display_mode'):
+                self.status_display_mode = 0  # 0:コンパクト, 1:詳細, 2:コンソール
+            
+            self.status_display_mode = (self.status_display_mode + 1) % 3
+            mode_names = ["コンパクト", "詳細", "コンソール"]
+            print(f"ステータス表示モードを{mode_names[self.status_display_mode]}に変更しました")
+            
+            # コンソールモードの場合、現在の状態を出力
+            if self.status_display_mode == 2:
+                self.print_status_to_console()
 
     #
     # モデル設定
@@ -1031,18 +1075,251 @@ class Application:
         self.image = image
 
     #
+    # 両方の姿勢推定を実行して結果を比較する関数（デバッグ用）
+    #
+    def compute_pose_comparison(self, point_2D, point_3D):
+        """
+        PnP方式とFace Landmarker方式の両方を実行して結果を比較
+        """
+        # 1. 従来のPnP方式を実行
+        pnp_success, pnp_vector, pnp_angle = self.compute_camera_pose(point_2D, point_3D)
+        
+        # 2. Face Landmarker方式を実行（利用可能な場合）
+        fl_success, fl_vector, fl_angle = False, None, None
+        if (self.use_face_landmarker and self.face_landmarker_results and 
+            hasattr(self.face_landmarker_results, 'facial_transformation_matrixes') and
+            self.face_landmarker_results.facial_transformation_matrixes):
+            
+            fl_success, fl_vector, fl_angle = self.compute_pose_from_face_landmarker()
+        
+        # 3. 結果を比較・保存
+        comparison_result = {
+            'timestamp': datetime.datetime.now(),
+            'pnp_success': pnp_success,
+            'pnp_vector': pnp_vector,
+            'pnp_angle': pnp_angle,
+            'fl_success': fl_success,
+            'fl_vector': fl_vector,
+            'fl_angle': fl_angle
+        }
+        
+        self.comparison_results.append(comparison_result)
+        
+        # 結果をファイルに保存（一度だけ）
+        if not hasattr(self, 'comparison_saved') or not self.comparison_saved:
+            self.save_pose_comparison_results(comparison_result)
+            self.comparison_saved = True
+        
+        # 結果をファイルに保存（最新の10件のみ保持）
+        if len(self.comparison_results) > 10:
+            self.comparison_results = self.comparison_results[-10:]
+        
+        return pnp_success, pnp_vector, pnp_angle
+    
+    #
+    # Face Landmarkerから直接姿勢を推定する関数
+    #
+    def compute_pose_from_face_landmarker(self):
+        """
+        Face Landmarkerの変換行列から直接姿勢を推定
+        """
+        try:
+            if (not self.face_landmarker_results or 
+                not hasattr(self.face_landmarker_results, 'facial_transformation_matrixes') or
+                not self.face_landmarker_results.facial_transformation_matrixes):
+                return False, None, None
+            
+            # 変換行列を取得
+            transformation_matrix = np.array(
+                self.face_landmarker_results.facial_transformation_matrixes[0]
+            ).reshape(4, 4)
+            
+            # 回転行列と並進ベクトルを抽出
+            R = transformation_matrix[:3, :3]
+            t = transformation_matrix[:3, 3]
+            
+            # スケール係数を更新（変換行列の大きさから推定）
+            scale_estimate = np.linalg.norm(t)
+            if scale_estimate > 0:
+                self.face_landmarker_scale = scale_estimate
+            
+            # モデルビュー行列を生成
+            self.generate_modelview(R, t)
+            
+            # 顔の方向ベクトルを計算
+            vector = self.estimator.compute_head_vector()
+            
+            # 顔のオイラー角を計算
+            angle = self.estimator.compute_head_angle(R, t)
+            
+            return True, vector, angle
+            
+        except Exception as e:
+            print(f"Face Landmarker姿勢推定エラー: {e}")
+            return False, None, None
+    
+    #
+    # コンソールに状態を出力する関数
+    #
+    def print_status_to_console(self):
+        """
+        現在の状態をコンソールに詳細出力
+        """
+        if self.console_printed and self.status_display_mode == 2:
+            return  # 一度だけ出力
+        
+        print("=" * 50)
+        print("          MediaPipe AR システム状態")
+        print("=" * 50)
+        print(f"FaceMesh描画 [M]:         {'ON' if self.draw_landmark else 'OFF'}")
+        print(f"Face Detector機能 [F]:    {'ON' if self.use_facedetector else 'OFF'}")
+        print(f"Face Landmarker機能 [L]:  {'ON' if self.use_face_landmarker else 'OFF'}")
+        print(f"位置調整機能 [D]:         {'ON' if self.adjust_landmarks else 'OFF'}")
+        print(f"自動スケール機能 [A]:     {'ON' if self.auto_scale_model else 'OFF'}")
+        print(f"姿勢比較モード [C]:       {'ON' if self.comparison_mode else 'OFF'}")
+        
+        point_mode_names = {0: "全点", 1: "上部", 2: "選択"}
+        point_mode = point_mode_names.get(self.detect_stable, "不明")
+        print(f"対応点モード [P]:         {point_mode}")
+        
+        print("-" * 50)
+        print("キー操作:")
+        print("  [Q] 終了    [S] 画像保存    [R] 録画")
+        print("  [M] FaceMesh    [F] Face Detector    [L] Face Landmarker")
+        print("  [A] 自動スケール    [D] 位置調整    [P] 対応点モード")
+        print("  [C] 姿勢比較    [T] 表示モード切替")
+        print("=" * 50)
+        
+        if self.status_display_mode == 2:
+            self.console_printed = True
+    
+    #
+    # 姿勢比較結果をファイルに保存する関数
+    #
+    def save_pose_comparison_results(self, comparison_result):
+        """
+        姿勢比較結果を詳細なテキストファイルとして保存
+        """
+        try:
+            import os
+            # outputディレクトリが存在しない場合は作成
+            os.makedirs('output', exist_ok=True)
+            
+            today = str(datetime.date.today()).replace('-','')
+            filename = f'output/pose_comparison_{today}_{self.count_img}.txt'
+            
+            with open(filename, 'w', encoding='utf-8') as f:
+                f.write("=== 姿勢推定比較結果 ===\n")
+                f.write(f"画像番号: {self.count_img}\n")
+                f.write(f"日時: {comparison_result['timestamp']}\n\n")
+                
+                # PnP方式の結果
+                f.write("--- PnP方式 ---\n")
+                f.write(f"成功: {comparison_result['pnp_success']}\n")
+                if comparison_result['pnp_success'] and comparison_result['pnp_angle'] is not None:
+                    angle = comparison_result['pnp_angle']
+                    f.write(f"オイラー角: X={angle[0]:.3f}, Y={angle[1]:.3f}, Z={angle[2]:.3f}\n")
+                    if comparison_result['pnp_vector'] is not None:
+                        vector = comparison_result['pnp_vector']
+                        f.write(f"方向ベクトル: ({vector[0]}, {vector[1]})\n")
+                else:
+                    f.write("姿勢推定失敗\n")
+                f.write("\n")
+                
+                # Face Landmarker方式の結果
+                f.write("--- Face Landmarker方式 ---\n")
+                f.write(f"成功: {comparison_result['fl_success']}\n")
+                if comparison_result['fl_success'] and comparison_result['fl_angle'] is not None:
+                    angle = comparison_result['fl_angle']
+                    f.write(f"オイラー角: X={angle[0]:.3f}, Y={angle[1]:.3f}, Z={angle[2]:.3f}\n")
+                    # Face Landmarkerのスケール係数を追加
+                    if hasattr(self, 'face_landmarker_scale'):
+                        f.write(f"スケール係数: {self.face_landmarker_scale}\n")
+                    if comparison_result['fl_vector'] is not None:
+                        vector = comparison_result['fl_vector']
+                        f.write(f"方向ベクトル: {vector}\n")
+                else:
+                    f.write("姿勢推定失敗またはFace Landmarker無効\n")
+                f.write("\n")
+                
+                # 角度差分の計算と保存
+                if (comparison_result['pnp_success'] and comparison_result['fl_success'] and 
+                    comparison_result['pnp_angle'] is not None and comparison_result['fl_angle'] is not None):
+                    
+                    pnp_angle = comparison_result['pnp_angle']
+                    fl_angle = comparison_result['fl_angle']
+                    
+                    diff_x = fl_angle[0] - pnp_angle[0]
+                    diff_y = fl_angle[1] - pnp_angle[1]
+                    diff_z = fl_angle[2] - pnp_angle[2]
+                    diff_norm = np.sqrt(diff_x**2 + diff_y**2 + diff_z**2)
+                    
+                    f.write("--- 角度差分 (Face Landmarker - PnP) ---\n")
+                    f.write(f"X軸: {diff_x:.3f}度\n")
+                    f.write(f"Y軸: {diff_y:.3f}度\n")
+                    f.write(f"Z軸: {diff_z:.3f}度\n")
+                    f.write(f"差分ノルム: {diff_norm:.3f}度\n")
+                
+            print(f"姿勢比較結果を保存しました: {filename}")
+            
+        except Exception as e:
+            print(f"姿勢比較結果の保存に失敗しました: {e}")
+
+    #
     # 現在の状態を画面に表示する関数
     #
     def draw_status_info(self, image):
         """
-        画面右上に現在の機能ON/OFF状態を表示
+        ステータス表示モードに応じて情報を表示
+        """
+        if self.status_display_mode == 0:
+            # コンパクトモード
+            self.draw_compact_status_info(image)
+        elif self.status_display_mode == 1:
+            # 詳細モード
+            self.draw_detailed_status_info(image)
+        elif self.status_display_mode == 2:
+            # コンソールモード（画面には何も表示しない）
+            pass
+    
+    def draw_compact_status_info(self, image):
+        """
+        コンパクトなステータス表示（ONの機能のみ表示）
+        """
+        # ONになっている機能のみを表示
+        active_features = []
+        if self.draw_landmark:
+            active_features.append("FaceMesh")
+        if self.use_facedetector:
+            active_features.append("Face Detector")
+        if self.use_face_landmarker:
+            active_features.append("Face Landmarker")
+        if self.comparison_mode:
+            active_features.append("Pose Comparison")
+        if self.auto_scale_model:
+            active_features.append("Auto Scale")
+        if self.adjust_landmarks:
+            active_features.append("Position Adjust")
+        
+        # ONの機能がない場合
+        if not active_features:
+            status_text = "All features OFF"
+        else:
+            status_text = "ON: " + ", ".join(active_features)
+        
+        cv2.putText(image, status_text, (10, 30),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+    
+    def draw_detailed_status_info(self, image):
+        """
+        詳細なステータス表示（従来の表示）
         """
         # 背景の半透明ボックスを描画（見やすくするため）
         # 右上に配置
-        box_x1 = self.width - 410  # 右端から410ピクセル左
+        box_x1 = self.width - 450  # 幅を少し広げて比較モードも表示
         box_y1 = 10
-        box_x2 = self.width - 10   # 右端から10ピクセル左
-        box_y2 = 210  # Face Landmarker行を追加したので高さを増やす
+        box_x2 = self.width - 10
+        box_y2 = 240  # 比較モード行を追加したので高さを増やす
         
         overlay = image.copy()
         cv2.rectangle(overlay, (box_x1, box_y1), (box_x2, box_y2), (0, 0, 0), -1)
@@ -1065,11 +1342,11 @@ class Application:
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, mesh_color, 1)
         y_offset += line_height
         
-        # FaceLandmark機能の状態 (Fキー)
-        face_landmark_status = "ON" if self.use_facelandmark else "OFF"
-        face_landmark_color = (0, 255, 0) if self.use_facelandmark else (128, 128, 128)
-        cv2.putText(image, f"[F] FaceLandmark: {face_landmark_status}", (text_x, y_offset),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, face_landmark_color, 1)
+        # Face Detector機能の状態 (Fキー)
+        face_detector_status = "ON" if self.use_facedetector else "OFF"
+        face_detector_color = (0, 255, 0) if self.use_facedetector else (128, 128, 128)
+        cv2.putText(image, f"[F] Face Detector: {face_detector_status}", (text_x, y_offset),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, face_detector_color, 1)
         y_offset += line_height
         
         # Face Landmarker機能の状態 (Lキー)
@@ -1079,11 +1356,18 @@ class Application:
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, face_landmarker_color, 1)
         y_offset += line_height
         
+        # 比較モードの状態 (Cキー)
+        comparison_status = "ON" if self.comparison_mode else "OFF"
+        comparison_color = (0, 255, 0) if self.comparison_mode else (128, 128, 128)
+        cv2.putText(image, f"[C] Pose Comparison: {comparison_status}", (text_x, y_offset),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, comparison_color, 1)
+        y_offset += line_height
+        
         # 位置調整機能の状態 (Dキー)
         adjust_status = "ON" if self.adjust_landmarks else "OFF"
         adjust_color = (0, 255, 0) if self.adjust_landmarks else (128, 128, 128)
-        status_text = f"[D] Position Adjust (Fix Edges): {adjust_status}"
-        if self.adjust_landmarks and not self.use_facelandmark:
+        status_text = f"[D] Position Adjust: {adjust_status}"
+        if self.adjust_landmarks and not self.use_facedetector:
             status_text += " (Need F key ON)"
             adjust_color = (0, 165, 255)  # オレンジ色
         cv2.putText(image, status_text, (text_x, y_offset),
@@ -1094,7 +1378,7 @@ class Application:
         scale_status = "ON" if self.auto_scale_model else "OFF"
         scale_color = (0, 255, 0) if self.auto_scale_model else (128, 128, 128)
         status_text = f"[A] Auto Scale: {scale_status}"
-        if self.auto_scale_model and not self.use_facelandmark:
+        if self.auto_scale_model and not self.use_facedetector:
             status_text += " (Need F key ON)"
             scale_color = (0, 165, 255)  # オレンジ色
         cv2.putText(image, status_text, (text_x, y_offset),

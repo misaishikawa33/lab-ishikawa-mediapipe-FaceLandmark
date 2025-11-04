@@ -64,23 +64,40 @@ class USBCamera:
     #
     def OpenCamera(self, width, height, use_api):
         self.inputMode = self.INPUT_CAMERA
-        # 画像の読み込み
-        self.capture = cv2.VideoCapture(self.deviceID, use_api)
-
-        if not self.capture:
-            print('Camera open error')
+        
+        # 複数のカメラIDを試行
+        camera_ids = [0, 1, 2, 3, 4]
+        self.capture = None
+        
+        for camera_id in camera_ids:
+            print(f"カメラID {camera_id} を試行中...")
+            self.capture = cv2.VideoCapture(camera_id, use_api)
+            
+            if self.capture and self.capture.isOpened():
+                print(f"カメラID {camera_id} で正常に接続しました")
+                self.deviceID = camera_id
+                break
+            else:
+                if self.capture:
+                    self.capture.release()
+                self.capture = None
+        
+        if self.capture is None or not self.capture.isOpened():
+            print('利用可能なカメラが見つかりません')
             return False
 
-        if self.capture.isOpened() is False:
-            message = "Camera ID %d is not found." % self.deviceID
-            print(message)
-            return False
-
-        self.image = self.capture.read()
+        # カメラ設定
         self.capture.set(cv2.CAP_PROP_FPS, 30)
         self.capture.set(cv2.CAP_PROP_FRAME_WIDTH,  width)
         self.capture.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-
+        
+        # 初期画像読み込みのテスト
+        ret, test_image = self.capture.read()
+        if not ret or test_image is None:
+            print('カメラからの画像取得に失敗しました')
+            return False
+        
+        print('カメラの初期化が完了しました')
         self.width    = width
         self.height   = height
         self.nchannels = 3
@@ -112,7 +129,9 @@ class USBCamera:
         ret, self.image = self.capture.read()
         if not ret:
             print("カメラの読み取りに失敗しました。")
-        self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
+            return ret, self.image
+        if self.image is not None:
+            self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
         #
         # カメラ画像の回転
         #
