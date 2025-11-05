@@ -1175,7 +1175,7 @@ class Application:
     #
     def compute_pose_from_face_landmarker(self):
         """
-        Face Landmarkerの変換行列から直接姿勢を推定
+        Face Landmarkerの変換行列から直接姿勢を推定（カメラ内部パラメータ考慮）
         """
         try:
             if (not self.face_landmarker_results or 
@@ -1189,31 +1189,75 @@ class Application:
             ).reshape(4, 4)
             
             # 回転行列と並進ベクトルを抽出
-            R = transformation_matrix[:3, :3]
-            t = transformation_matrix[:3, 3]
+            R_original = transformation_matrix[:3, :3]
+            t_original = transformation_matrix[:3, 3]
             
-            # スケール係数を更新（変換行列の大きさから推定）
+            #
+            # カメラ内部パラメータを考慮した座標変換
+            #
+            # MediaPipeは正規化座標系（-1 to 1）を使用するため、カメラパラメータで実世界座標に変換
+            
+            # カメラ内部パラメータ行列を構築
+            K = np.array([
+                [self.focus, 0, self.u0],
+                [0, self.focus, self.v0],
+                [0, 0, 1]
+            ])
+            
+            # MediaPipeの正規化座標系からピクセル座標系への変換を考慮
+            # 正規化座標 -> ピクセル座標 -> カメラ座標系
+            scale_x = self.width / 2.0
+            scale_y = self.height / 2.0
+            
+            # 並進ベクトルの座標変換
+            # MediaPipeの正規化座標系からカメラ座標系への変換
+            t_camera = np.array([
+                t_original[0] * scale_x / self.focus,  # X軸: 水平方向
+                t_original[1] * scale_y / self.focus,  # Y軸: 垂直方向
+                t_original[2]                          # Z軸: 深度方向（そのまま）
+            ])
+            
+            # 回転行列の座標系変換
+            # MediaPipeとOpenGLの座標系の違いを補正
+            coord_transform = np.array([
+                [1, 0, 0],
+                [0, -1, 0],  # Y軸反転
+                [0, 0, -1]   # Z軸反転
+            ])
+            
+            R_corrected = coord_transform @ R_original @ coord_transform.T
+            
+            # スケール係数を更新（カメラパラメータを考慮した変換行列の大きさから推定）
             # 手動調整がされていない場合のみ自動推定
-            scale_estimate = np.linalg.norm(t)
+            scale_estimate = np.linalg.norm(t_camera)
             if scale_estimate > 0 and (not hasattr(self, 'manual_scale_set') or not self.manual_scale_set):
-                self.face_landmarker_scale = scale_estimate
+                # カメラ焦点距離を考慮したスケール調整
+                self.face_landmarker_scale = scale_estimate * (self.focus / 700.0)
             
             # 手動スケール調整が有効な場合でも、並進ベクトル（位置）は変更しない
             # スケールはモデル描画時のみ適用される
             
-            # モデルビュー行列を生成
-            self.generate_modelview(R, t)
+            # モデルビュー行列を生成（カメラパラメータ考慮後の値を使用）
+            self.generate_modelview(R_corrected, t_camera)
             
-            # 顔の方向ベクトルを計算
+            # 顔の方向ベクトルを計算（補正された回転行列と並進ベクトルを使用）
+            # PoseEstimationクラスの一時的な値を更新
+            original_R = self.estimator.R
+            original_t = self.estimator.t
+            self.estimator.R = R_corrected
+            self.estimator.t = t_camera
+            
             vector = self.estimator.compute_head_vector()
+            angle = self.estimator.compute_head_angle(R_corrected, t_camera)
             
-            # 顔のオイラー角を計算
-            angle = self.estimator.compute_head_angle(R, t)
+            # 元の値を復元
+            self.estimator.R = original_R
+            self.estimator.t = original_t
             
             return True, vector, angle
             
         except Exception as e:
-            print(f"Face Landmarker姿勢推定エラー: {e}")
+            print(f"Face Landmarker姿勢推定エラー（カメラパラメータ考慮）: {e}")
             return False, None, None
     
     #
