@@ -22,8 +22,10 @@ python3.10 main.py
  - **m**: FaceMesh描画のON/OFF（478個のランドマーク描画）
  - **p**: 対応点モードを変更（All Points → Upper Points → Selected Points）
  - **c**: 姿勢比較モードのON/OFF（PnP方式とFace Landmarker方式の同時実行・比較）
+ - **b**: Face Landmarker直接姿勢推定のON/OFF（Face Landmarkerの変換行列から直接カメラ姿勢を推定）
  - **t**: ステータス表示モードの切り替え（コンパクト表示 → 詳細表示 → コンソール表示のみ）
- - **1-9**: Face Landmarkerのスケール調整（手動調整）
+ - **1-9**: Face Landmarkerのスケール調整（手動調整、1.0～9.0倍）
+ - **0**: Face Landmarkerスケールを自動調整に戻す
 
 ### 画面表示
 実行中、画面右上に現在の機能状態が表示されます:
@@ -34,10 +36,11 @@ python3.10 main.py
 - **[A] Auto Scale**: ON/OFF（緑=有効、灰色=無効、オレンジ=要Face Detecter）
 - **[P] Point Mode**: 現在の対応点モード
 - **[C] Pose Comparison**: ON/OFF（緑=有効、灰色=無効）
+- **[B] FL Direct Pose**: ON/OFF（緑=有効、灰色=無効）
 - **[T] Status Display**: 表示モード（コンパクト/詳細/コンソール）
 
 #### ステータス表示モード
-- **コンパクト**: 有効な機能のみ表示（例：ON: FaceMesh, Face Detector）
+- **コンパクト**: 有効な機能のみ表示（例：ON: FaceMesh, Face Detector, FL Direct Pose）
 - **詳細**: 全機能の状態を詳細表示
 - **コンソール**: 画面表示なし、コンソール出力のみ
 
@@ -46,6 +49,12 @@ python3.10 main.py
 - リアルタイムで両方式の推定結果を表示
 - 比較結果は自動的にファイル保存（`output/pose_comparison_YYYYMMDD_N.txt`）
 - ファイルには各方式のオイラー角、成功/失敗状態、角度差分などの詳細情報を記録
+
+#### Face Landmarker直接姿勢推定機能
+**B**キーで有効化すると、Face Landmarkerから取得した変換行列を直接使用してカメラの位置・姿勢を推定します:
+- 従来のPnP方式を使わず、Face Landmarkerの変換行列から直接姿勢を計算
+- 高精度な顔追跡が可能（Face Landmarker機能がONの場合のみ利用可能）
+- スケール係数は変換行列の大きさから自動推定
 
 ## 実行方法(create_MQO)
 ```bash

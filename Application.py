@@ -76,6 +76,7 @@ class Application:
         
         # Face Landmarkerスケール係数
         self.face_landmarker_scale = 1.0
+        self.manual_scale_set = False  # 手動スケール調整フラグ
         
         # 録画用変数
         self.use_record = False # 初期値はFalse
@@ -306,7 +307,8 @@ class Application:
         
         # Face Landmarker描画
         if self.use_face_landmarker:
-            self.draw_face_landmarker(self.image)
+           # self.draw_face_landmarker(self.image) # 実験用にコメントアウト(2025-11-05)
+           pass
         
         # ステータス表示を追加
         self.draw_status_info(self.image)
@@ -360,6 +362,9 @@ class Application:
             if self.comparison_mode:
                 # 比較モードが有効な場合、両方の方式を実行
                 success, vector, angle = self.compute_pose_comparison(point_2D, point_3D)
+            elif hasattr(self, 'use_direct_pose') and self.use_direct_pose:
+                # Face Landmarker直接姿勢推定モードが有効な場合
+                success, vector, angle = self.compute_pose_from_face_landmarker()
             else:
                 # 通常のPnP方式のみ実行
                 success, vector, angle = self.compute_camera_pose(point_2D, point_3D)
@@ -458,9 +463,15 @@ class Application:
             
             # print(f"モデル平行移動: X={model_shift_X:.1f}, Y={model_shift_Y:.1f}")
         
-        model_scale_X = 1.0 * scale_x * self.model_scale_factor
-        model_scale_Y = 1.0 * scale_y * self.model_scale_factor
-        model_scale_Z = 1.0 * self.model_scale_factor 
+        # Face Landmarker直接姿勢推定モードの場合は、face_landmarker_scaleを使用
+        if hasattr(self, 'use_direct_pose') and self.use_direct_pose:
+            model_scale_X = 1.0 * scale_x * self.face_landmarker_scale
+            model_scale_Y = 1.0 * scale_y * self.face_landmarker_scale
+            model_scale_Z = 1.0 * self.face_landmarker_scale
+        else:
+            model_scale_X = 1.0 * scale_x * self.model_scale_factor
+            model_scale_Y = 1.0 * scale_y * self.model_scale_factor
+            model_scale_Z = 1.0 * self.model_scale_factor 
     
         # 世界座標系の描画
         if self.draw_axis:
@@ -907,6 +918,49 @@ class Application:
             # コンソールモードの場合、現在の状態を出力
             if self.status_display_mode == 2:
                 self.print_status_to_console()
+        
+        # BでFace Landmarker直接姿勢推定のON/OFF切り替え
+        if action == glfw.PRESS and key == glfw.KEY_B:
+            if not hasattr(self, 'use_direct_pose'):
+                self.use_direct_pose = False
+            
+            self.use_direct_pose = not self.use_direct_pose
+            if self.use_direct_pose:
+                print("Face Landmarker直接姿勢推定を有効化しました")
+            else:
+                print("Face Landmarker直接姿勢推定を無効化しました")
+        
+        # 1-9キーでFace Landmarkerスケール調整
+        if action == glfw.PRESS:
+            scale_keys = {
+                glfw.KEY_1: 0.05,
+                glfw.KEY_2: 0.1,
+                glfw.KEY_3: 0.2,
+                glfw.KEY_4: 0.3,
+                glfw.KEY_5: 0.5,
+                glfw.KEY_6: 0.7,
+                glfw.KEY_7: 1.0,
+                glfw.KEY_8: 0.5,
+                glfw.KEY_9: 0.75
+            }
+            
+            if key in scale_keys:
+                if self.use_face_landmarker:
+                    self.face_landmarker_scale = scale_keys[key]
+                    self.manual_scale_set = True  # 手動調整フラグを設定
+                    print(f"Face Landmarkerスケールを{scale_keys[key]:.1f}に変更しました")
+                    print(f"  - use_direct_pose: {hasattr(self, 'use_direct_pose') and self.use_direct_pose}")
+                    print(f"  - manual_scale_set: {self.manual_scale_set}")
+                else:
+                    print("Face Landmarker機能を有効化してください（Lキー）")
+            
+            # 0キーで自動スケールに戻す
+            elif key == glfw.KEY_0:
+                if self.use_face_landmarker:
+                    self.manual_scale_set = False  # 手動調整フラグをリセット
+                    print("Face Landmarkerスケールを自動調整に戻しました")
+                else:
+                    print("Face Landmarker機能を有効化してください（Lキー）")
 
     #
     # モデル設定
@@ -1139,9 +1193,13 @@ class Application:
             t = transformation_matrix[:3, 3]
             
             # スケール係数を更新（変換行列の大きさから推定）
+            # 手動調整がされていない場合のみ自動推定
             scale_estimate = np.linalg.norm(t)
-            if scale_estimate > 0:
+            if scale_estimate > 0 and (not hasattr(self, 'manual_scale_set') or not self.manual_scale_set):
                 self.face_landmarker_scale = scale_estimate
+            
+            # 手動スケール調整が有効な場合でも、並進ベクトル（位置）は変更しない
+            # スケールはモデル描画時のみ適用される
             
             # モデルビュー行列を生成
             self.generate_modelview(R, t)
@@ -1177,6 +1235,12 @@ class Application:
         print(f"位置調整機能 [D]:         {'ON' if self.adjust_landmarks else 'OFF'}")
         print(f"自動スケール機能 [A]:     {'ON' if self.auto_scale_model else 'OFF'}")
         print(f"姿勢比較モード [C]:       {'ON' if self.comparison_mode else 'OFF'}")
+        print(f"Face Landmarker直接姿勢推定 [B]: {'ON' if hasattr(self, 'use_direct_pose') and self.use_direct_pose else 'OFF'}")
+        
+        # Face Landmarkerスケール情報
+        if self.use_face_landmarker:
+            scale_mode = "手動調整" if hasattr(self, 'manual_scale_set') and self.manual_scale_set else "自動調整"
+            print(f"Face Landmarkerスケール [1-9,0]: {self.face_landmarker_scale:.2f} ({scale_mode})")
         
         point_mode_names = {0: "全点", 1: "上部", 2: "選択"}
         point_mode = point_mode_names.get(self.detect_stable, "不明")
@@ -1187,7 +1251,8 @@ class Application:
         print("  [Q] 終了    [S] 画像保存    [R] 録画")
         print("  [M] FaceMesh    [F] Face Detector    [L] Face Landmarker")
         print("  [A] 自動スケール    [D] 位置調整    [P] 対応点モード")
-        print("  [C] 姿勢比較    [T] 表示モード切替")
+        print("  [C] 姿勢比較    [B] FL直接姿勢推定    [T] 表示モード切替")
+        print("  [1-9] FLスケール調整    [0] FLスケール自動に戻す")
         print("=" * 50)
         
         if self.status_display_mode == 2:
@@ -1296,6 +1361,8 @@ class Application:
             active_features.append("Face Landmarker")
         if self.comparison_mode:
             active_features.append("Pose Comparison")
+        if hasattr(self, 'use_direct_pose') and self.use_direct_pose:
+            active_features.append("FL Direct Pose")
         if self.auto_scale_model:
             active_features.append("Auto Scale")
         if self.adjust_landmarks:
@@ -1319,7 +1386,7 @@ class Application:
         box_x1 = self.width - 450  # 幅を少し広げて比較モードも表示
         box_y1 = 10
         box_x2 = self.width - 10
-        box_y2 = 240  # 比較モード行を追加したので高さを増やす
+        box_y2 = 300  # Face Landmarkerスケール情報行を追加したので高さを増やす
         
         overlay = image.copy()
         cv2.rectangle(overlay, (box_x1, box_y1), (box_x2, box_y2), (0, 0, 0), -1)
@@ -1363,6 +1430,13 @@ class Application:
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, comparison_color, 1)
         y_offset += line_height
         
+        # Face Landmarker直接姿勢推定の状態 (Bキー)
+        direct_pose_status = "ON" if hasattr(self, 'use_direct_pose') and self.use_direct_pose else "OFF"
+        direct_pose_color = (0, 255, 0) if hasattr(self, 'use_direct_pose') and self.use_direct_pose else (128, 128, 128)
+        cv2.putText(image, f"[B] FL Direct Pose: {direct_pose_status}", (text_x, y_offset),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, direct_pose_color, 1)
+        y_offset += line_height
+        
         # 位置調整機能の状態 (Dキー)
         adjust_status = "ON" if self.adjust_landmarks else "OFF"
         adjust_color = (0, 255, 0) if self.adjust_landmarks else (128, 128, 128)
@@ -1390,3 +1464,11 @@ class Application:
         point_mode = point_mode_names.get(self.detect_stable, "Unknown")
         cv2.putText(image, f"[P] Point Mode: {point_mode}", (text_x, y_offset),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
+        y_offset += line_height
+        
+        # Face Landmarkerスケール情報（Face Landmarker有効時のみ）
+        if self.use_face_landmarker:
+            scale_mode = "Manual" if hasattr(self, 'manual_scale_set') and self.manual_scale_set else "Auto"
+            scale_text = f"FL Scale: {self.face_landmarker_scale:.2f} ({scale_mode})"
+            cv2.putText(image, scale_text, (text_x, y_offset),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)  # 黄色
