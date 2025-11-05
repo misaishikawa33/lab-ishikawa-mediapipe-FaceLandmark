@@ -1242,17 +1242,25 @@ class Application:
             
             # 顔の方向ベクトルを計算（補正された回転行列と並進ベクトルを使用）
             # PoseEstimationクラスの一時的な値を更新
-            original_R = self.estimator.R
-            original_t = self.estimator.t
-            self.estimator.R = R_corrected
-            self.estimator.t = t_camera
+            # rvec_lastとtvec_lastを一時的に保存
+            original_rvec = getattr(self.estimator, 'rvec_last', None)
+            original_tvec = getattr(self.estimator, 'tvec_last', None)
+            
+            # 回転行列を回転ベクトル（Rodrigues変換）に変換
+            rvec_corrected, _ = cv2.Rodrigues(R_corrected)
+            
+            # PoseEstimationクラスの値を一時的に更新
+            self.estimator.rvec_last = rvec_corrected.flatten()
+            self.estimator.tvec_last = t_camera
             
             vector = self.estimator.compute_head_vector()
             angle = self.estimator.compute_head_angle(R_corrected, t_camera)
             
-            # 元の値を復元
-            self.estimator.R = original_R
-            self.estimator.t = original_t
+            # 元の値を復元（存在する場合）
+            if original_rvec is not None:
+                self.estimator.rvec_last = original_rvec
+            if original_tvec is not None:
+                self.estimator.tvec_last = original_tvec
             
             return True, vector, angle
             
