@@ -107,7 +107,7 @@ class Application:
         #
         # カメラの内部パラメータ(usbカメラ)
         #
-        self.focus = 700.0
+        self.focus = 1500.0 #20251118に変更
         self.u0    = width / 2.0
         self.v0    = height / 2.0
 
@@ -262,10 +262,36 @@ class Application:
         # バッファを初期化
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         # 画像の読み込み
-        success, self.image = self.camera.CaptureImage()
+        
+        # === カメラ映像処理（リアルタイム） ===
+        # success, self.image = self.camera.CaptureImage()
+        # if not success:
+        #     print("error : video error")
+        #     return
+        # # USBCameraが既にRGB変換済みのため、追加変換は不要
+        # self.rgb_image_for_display = self.image.copy()
+        
+        # === 静的画像処理（単一画像） ===
+        static_image_path = "/home/misa/lab/mediapipe/FaceLandmark/mqodata/test6.jpg"
+        bgr_image = cv2.imread(static_image_path)
+        success = bgr_image is not None
+
         if not success:
-            print("error : video error")
+            print(f"error : could not load image from {static_image_path}")
             return
+        
+        # 画像サイズを640x480にリサイズ
+        height, width = bgr_image.shape[:2]
+        if width != 640 or height != 480:
+            bgr_image = cv2.resize(bgr_image, (640, 480))
+        
+        # MediaPipe用にRGBに変換
+        self.image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
+        
+        # 描画用にもRGB画像を作成（GLWindowはRGBを期待）
+        self.rgb_image_for_display = self.image.copy()
+
+        ### ここまでMediaPipe処理部分 ###
     
         # 描画設定
         self.image.flags.writeable = False
@@ -302,25 +328,25 @@ class Application:
         #
         self.image.flags.writeable = True
 
-        # ランドマークの描画
+        # ランドマークの描画（RGB画像に描画）
         if self.draw_landmark:
             # ランドマークを描画するメソッドを実行
-            self.draw_landmarks(self.image)
+            self.draw_landmarks(self.rgb_image_for_display)
         
-        # Face Detector追加描画
+        # Face Detector追加描画（RGB画像に描画）
         if self.use_facedetector:
-            self.draw_face_detection(self.image)
+            self.draw_face_detection(self.rgb_image_for_display)
         
         # Face Landmarker描画
         if self.use_face_landmarker:
             #elf.draw_face_landmarker(self.image) #20251105コメントアウト
             pass
         
-        # ステータス表示を追加
-        self.draw_status_info(self.image)
+        # ステータス表示を追加（RGB画像に描画）
+        self.draw_status_info(self.rgb_image_for_display)
 
-        # 画像を描画するメソッドを実行
-        self.glwindow.draw_image(self.image)
+        # RGB画像を描画するメソッドを実行
+        self.glwindow.draw_image(self.rgb_image_for_display)
         
         # 
         # カメラ姿勢推定
