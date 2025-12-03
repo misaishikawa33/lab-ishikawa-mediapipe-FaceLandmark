@@ -46,35 +46,48 @@ class Application:
         self.detect_stable = 0
         # 顔のランドマークを記述するかどうか
         self.draw_landmark = draw_landmark
-        # Face Detector機能を使用するかどうか
-        self.use_facedetector = use_facedetector
+        # Face Detector機能を使用するかどうか (コメントアウト)
+        # self.use_facedetector = use_facedetector
+        self.use_facedetector = False  # コメントアウト用のデフォルト値
 
-        # モデル自動スケーリング機能
-        self.auto_scale_model = False
-        self.model_scale_factor = 1.0
+        # モデル自動スケーリング機能 (コメントアウト)
+        # self.auto_scale_model = False
+        # self.model_scale_factor = 1.0
+        self.auto_scale_model = False  # コメントアウト用のデフォルト値
+        self.model_scale_factor = 1.0  # コメントアウト用のデフォルト値
         
         # ランドマーク位置調整機能（右端・左端のみ）
         self.adjust_landmarks = False
         self.alignment_info = None
         
-        # Face Landmarker機能
-        self.use_face_landmarker = False
-        self.face_landmarker = None
-        self.face_landmarker_results = None
+        # Face Landmarker機能 (コメントアウト)
+        # self.use_face_landmarker = False
+        # self.face_landmarker = None
+        # self.face_landmarker_results = None
+        self.use_face_landmarker = False  # コメントアウト用のデフォルト値
+        self.face_landmarker_results = None  # コメントアウト用のデフォルト値
         
-        # Face Landmarker描画モード (0:点のみ, 1:線とメッシュ, 2:点+番号, 3:OFF)
-        self.face_landmarker_draw_mode = 0
+        # Face Landmarker描画モード (コメントアウト)
+        # self.face_landmarker_draw_mode = 0
+        self.face_landmarker_draw_mode = 0  # コメントアウト用のデフォルト値
         
-        # Face LandmarkerランドマークによるPnP姿勢推定機能
-        self.use_face_landmarker_pnp = False
+        # Face LandmarkerランドマークによるPnP姿勢推定機能 (コメントアウト)
+        # self.use_face_landmarker_pnp = False
+        self.use_face_landmarker_pnp = False  # コメントアウト用のデフォルト値
         
         # モデル描画制御
         self.draw_model_flag = True  # モデル描画のON/OFF
         
-        # 比較モード関連
-        self.comparison_mode = False
-        self.comparison_results = []
-        self.use_direct_pose = False  # Face Landmarkerの直接姿勢推定
+        # 比較モード関連 (コメントアウト)
+        # self.comparison_mode = False
+        # self.comparison_results = []
+        # self.use_direct_pose = False  # Face Landmarkerの直接姿勢推定
+        self.comparison_mode = False  # コメントアウト用のデフォルト値
+        self.comparison_results = []  # コメントアウト用のデフォルト値
+        self.use_direct_pose = False  # コメントアウト用のデフォルト値
+        
+        # ランドマーク位置調整機能
+        self.adjust_landmarks = False
         
         # ステータス表示モード (0:コンパクト, 1:詳細, 2:コンソール)
         self.status_display_mode = 0
@@ -147,32 +160,32 @@ class Application:
             circle_radius = 1)
         
         #
-        # Face Detector追加機能
+        # Face Detector追加機能 (コメントアウト)
         #
-        if self.use_facedetector:
-            # より高精度なFace Detector設定,
-            # 近距離model_selection=0, 遠距離model_selection=1
-            #model_selectionは信頼度x以上を顔とする
+        # if self.use_facedetector:
+        #     # より高精度なFace Detector設定,
+        #     # 近距離model_selection=0, 遠距離model_selection=1
+        #     #model_selectionは信頼度x以上を顔とする
 
-            self.face_detector_solution = mp.solutions.face_detection.FaceDetection(
-                model_selection=0, 
-                min_detection_confidence=0.5)
+        #     self.face_detector_solution = mp.solutions.face_detection.FaceDetection(
+        #         model_selection=0, 
+        #         min_detection_confidence=0.5)
             
-            # 追加のランドマーク描画設定
-            self.detector_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
-                thickness = 2, 
-                circle_radius = 2, 
-                color = (0, 255, 0))
-            print("Face Detector機能が有効化されました")
+        #     # 追加のランドマーク描画設定
+        #     self.detector_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
+        #         thickness = 2, 
+        #         circle_radius = 2, 
+        #         color = (0, 255, 0))
+        #     print("Face Detector機能が有効化されました")
         
         #
-        # Face Landmarker機能の初期化
+        # Face Landmarker機能の初期化 (コメントアウト)
         #
-        self.face_landmarker_solution = None
-        self.face_landmarker_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
-            thickness = 2, 
-            circle_radius = 3, 
-            color = (255, 0, 255))  # マゼンタ色
+        # self.face_landmarker_solution = None
+        # self.face_landmarker_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
+        #     thickness = 2, 
+        #     circle_radius = 3, 
+        #     color = (255, 0, 255))  # マゼンタ色
         
         #
         # マスク着用有無の推論モデルYOLOv8(未使用)
@@ -272,6 +285,7 @@ class Application:
         # self.rgb_image_for_display = self.image.copy()
         
         # === 静的画像処理（単一画像） ===
+        # 画像の形式の変換なリアルタイムの場合は、USBCameraクラス内で自動的にBGR→RGB変換
         static_image_path = "/home/misa/lab/mediapipe/FaceLandmark/mqodata/test6.jpg"
         bgr_image = cv2.imread(static_image_path)
         success = bgr_image is not None
@@ -306,22 +320,22 @@ class Application:
         self.face_mesh = self.face_mesh_solution.process(self.image)
         
         #
-        # Face Detector追加処理
+        # Face Detector追加処理 (コメントアウト)
         #
-        if self.use_facedetector:
-            self.face_detection = self.face_detector_solution.process(self.image)
+        # if self.use_facedetector:
+        #     self.face_detection = self.face_detector_solution.process(self.image)
         
         #
-        # Face Landmarker処理
+        # Face Landmarker処理 (コメントアウト)
         #
-        if self.use_face_landmarker and self.face_landmarker_solution:
-            try:
-                # MediaPipe image format に変換
-                mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=self.image)
-                self.face_landmarker_results = self.face_landmarker_solution.detect(mp_image)
-            except Exception as e:
-                print(f"Face Landmarker処理エラー: {e}")
-                self.face_landmarker_results = None
+        # if self.use_face_landmarker and self.face_landmarker_solution:
+        #     try:
+        #         # MediaPipe image format に変換
+        #         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=self.image)
+        #         self.face_landmarker_results = self.face_landmarker_solution.detect(mp_image)
+        #     except Exception as e:
+        #         print(f"Face Landmarker処理エラー: {e}")
+        #         self.face_landmarker_results = None
         
         #
         # 画像の描画を実行
@@ -333,14 +347,14 @@ class Application:
             # ランドマークを描画するメソッドを実行
             self.draw_landmarks(self.rgb_image_for_display)
         
-        # Face Detector追加描画（RGB画像に描画）
-        if self.use_facedetector:
-            self.draw_face_detection(self.rgb_image_for_display)
+        # Face Detector追加描画（RGB画像に描画）(コメントアウト)
+        # if self.use_facedetector:
+        #     self.draw_face_detection(self.rgb_image_for_display)
         
-        # Face Landmarker描画
-        if self.use_face_landmarker:
-            #elf.draw_face_landmarker(self.image) #20251105コメントアウト
-            pass
+        # Face Landmarker描画 (コメントアウト)
+        # if self.use_face_landmarker:
+        #     #elf.draw_face_landmarker(self.image) #20251105コメントアウト
+        #     pass
         
         # ステータス表示を追加（RGB画像に描画）
         self.draw_status_info(self.rgb_image_for_display)
@@ -391,35 +405,28 @@ class Application:
             #
             # カメラ位置、姿勢計算
             #
-            if self.comparison_mode:
-                # 比較モードが有効な場合、両方の方式を実行
-                success, vector, angle = self.compute_pose_comparison(point_2D, point_3D)
-            elif hasattr(self, 'use_face_landmarker_pnp') and self.use_face_landmarker_pnp:
-                # Face Landmarker PnP姿勢推定モードが有効な場合
-                success, vector, angle = self.compute_pose_from_face_landmarker_pnp()
-            elif hasattr(self, 'use_direct_pose') and self.use_direct_pose:
-                # Face Landmarker直接姿勢推定モードが有効な場合
-                success, vector, angle = self.compute_pose_from_face_landmarker()
-            else:
-                # 通常のPnP方式のみ実行
-                success, vector, angle = self.compute_camera_pose(point_2D, point_3D)
+            # 比較モード、Face Landmarker関連機能はコメントアウトされているため
+            # 常に通常のPnP方式を使用
+            success, vector, angle = self.compute_camera_pose(point_2D, point_3D)
             self.angle = angle
             
             #
-            # モデル自動スケーリングが有効な場合、スケールを計算
+            # モデル自動スケーリングが有効な場合、スケールを計算 (コメントアウト)
             #
-            if self.auto_scale_model and self.use_facedetector:
-                self.model_scale_factor = self.calculate_model_scale_from_ears()
-            else:
-                self.model_scale_factor = 1.0
+            # if self.auto_scale_model and self.use_facedetector:
+            #     self.model_scale_factor = self.calculate_model_scale_from_ears()
+            # else:
+            #     self.model_scale_factor = 1.0
+            self.model_scale_factor = 1.0  # 固定値に設定
             
             #
-            # ランドマーク位置調整が有効な場合、調整情報を計算
+            # ランドマーク位置調整が有効な場合、調整情報を計算 (コメントアウト)
             #
-            if self.adjust_landmarks and self.use_facedetector:
-                self.alignment_info = self.calculate_landmark_alignment()
-            else:
-                self.alignment_info = None
+            # if self.adjust_landmarks and self.use_facedetector:
+            #     self.alignment_info = self.calculate_landmark_alignment()
+            # else:
+            #     self.alignment_info = None
+            self.alignment_info = None  # 固定値に設定
             
             #
             # モデル描画フラグが有効な場合のみモデルを描画
@@ -888,46 +895,46 @@ class Application:
             else:
                 pass
         
-        # FでFace Detector機能のON/OFF切り替え
-        if action == glfw.PRESS and key == glfw.KEY_F:
-            self.use_facedetector = not self.use_facedetector
-            if self.use_facedetector:
-                # Face Detector機能を有効化
-                if not hasattr(self, 'face_detector_solution'):
-                    self.face_detector_solution = mp.solutions.face_detection.FaceDetection(
-                        model_selection=0, 
-                        min_detection_confidence=0.5)
-                    self.detector_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
-                        thickness = 2, 
-                        circle_radius = 2, 
-                        color = (0, 255, 0))
-                print("Face Detector機能を有効化しました")
-            else:
-                print("Face Detector機能を無効化しました")
+        # FでFace Detector機能のON/OFF切り替え (コメントアウト)
+        # if action == glfw.PRESS and key == glfw.KEY_F:
+        #     self.use_facedetector = not self.use_facedetector
+        #     if self.use_facedetector:
+        #         # Face Detector機能を有効化
+        #         if not hasattr(self, 'face_detector_solution'):
+        #             self.face_detector_solution = mp.solutions.face_detection.FaceDetection(
+        #                 model_selection=0, 
+        #                 min_detection_confidence=0.5)
+        #             self.detector_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
+        #                 thickness = 2, 
+        #                 circle_radius = 2, 
+        #                 color = (0, 255, 0))
+        #         print("Face Detector機能を有効化しました")
+        #     else:
+        #         print("Face Detector機能を無効化しました")
         
-        # Aでモデル自動スケーリングのON/OFF切り替え
-        if action == glfw.PRESS and key == glfw.KEY_A:
-            if not self.use_facedetector:
-                print("Face Detector機能を有効化してください（Fキー）")
-            else:
-                self.auto_scale_model = not self.auto_scale_model
-                if self.auto_scale_model:
-                    print("モデル自動スケーリングを有効化しました")
-                else:
-                    self.model_scale_factor = 1.0
-                    print("モデル自動スケーリングを無効化しました")
+        # Aでモデル自動スケーリングのON/OFF切り替え (コメントアウト)
+        # if action == glfw.PRESS and key == glfw.KEY_A:
+        #     if not self.use_facedetector:
+        #         print("Face Detector機能を有効化してください（Fキー）")
+        #     else:
+        #         self.auto_scale_model = not self.auto_scale_model
+        #         if self.auto_scale_model:
+        #             print("モデル自動スケーリングを有効化しました")
+        #         else:
+        #             self.model_scale_factor = 1.0
+        #             print("モデル自動スケーリングを無効化しました")
         
-        # Dでランドマーク位置調整のON/OFF切り替え
-        if action == glfw.PRESS and key == glfw.KEY_D:
-            if not self.use_facedetector:
-                print("Face Detector機能を有効化してください（Fキー）")
-            else:
-                self.adjust_landmarks = not self.adjust_landmarks
-                if self.adjust_landmarks:
-                    print("ランドマーク位置調整を有効化しました（ランドマーク234,454を耳の位置に合わせます）")
-                else:
-                    self.alignment_info = None
-                    print("ランドマーク位置調整を無効化しました")
+        # Dでランドマーク位置調整のON/OFF切り替え (コメントアウト)
+        # if action == glfw.PRESS and key == glfw.KEY_D:
+        #     if not self.use_facedetector:
+        #         print("Face Detector機能を有効化してください（Fキー）")
+        #     else:
+        #         self.adjust_landmarks = not self.adjust_landmarks
+        #         if self.adjust_landmarks:
+        #             print("ランドマーク位置調整を有効化しました（ランドマーク234,454を耳の位置に合わせます）")
+        #         else:
+        #             self.alignment_info = None
+        #             print("ランドマーク位置調整を無効化しました")
         
         # MでFaceMesh描画のON/OFF切り替え
         if action == glfw.PRESS and key == glfw.KEY_M:
@@ -937,50 +944,14 @@ class Application:
             else:
                 print("FaceMesh描画を無効化しました")
         
-        # LでFace Landmarker機能のON/OFF切り替え
-        if action == glfw.PRESS and key == glfw.KEY_L:
-            self.use_face_landmarker = not self.use_face_landmarker
-            if self.use_face_landmarker:
-                # Face Landmarker機能を有効化
-                if not self.face_landmarker_solution:
-                    try:
-                        # MediaPipe Face Landmarkerの初期化
-                        from mediapipe.tasks import python
-                        from mediapipe.tasks.python import vision
-                        
-                        # Face Landmarkerのベースオプション
-                        base_options = python.BaseOptions(
-                            model_asset_path='face_landmarker.task')
-                        options = vision.FaceLandmarkerOptions(
-                            base_options=base_options,
-                            output_face_blendshapes=False,
-                            output_facial_transformation_matrixes=True,  # 変換行列を有効化
-                            num_faces=1)
-                        self.face_landmarker_solution = vision.FaceLandmarker.create_from_options(options)
-                        print("Face Landmarker機能を有効化しました")
-                    except Exception as e:
-                        print(f"Face Landmarkerの初期化に失敗しました: {e}")
-                        print("モデルファイル 'face_landmarker.task' が必要です")
-                        self.face_landmarker_solution = None
-                        self.use_face_landmarker = False
-                else:
-                    print("Face Landmarker機能を有効化しました")
-            else:
-                print("Face Landmarker機能を無効化しました")
+        # LでFace Landmarker機能のON/OFF切り替え (コメントアウト)
+        # if action == glfw.PRESS and key == glfw.KEY_L:
+        #     self.use_face_landmarker = not self.use_face_landmarker
+        #     # ... (Face Landmarker関連の処理をすべてコメントアウト)
         
-        # Cで比較モードのON/OFF切り替え
-        if action == glfw.PRESS and key == glfw.KEY_C:
-            if not hasattr(self, 'comparison_mode'):
-                self.comparison_mode = False
-                self.comparison_results = []
-            
-            self.comparison_mode = not self.comparison_mode
-            if self.comparison_mode:
-                print("姿勢比較モードを有効化しました（PnP vs Face Landmarker）")
-                # 保存フラグをリセット（新しい比較セッション開始）
-                self.comparison_saved = False
-            else:
-                print("姿勢比較モードを無効化しました")
+        # Cで比較モードのON/OFF切り替え (コメントアウト)
+        # if action == glfw.PRESS and key == glfw.KEY_C:
+        #     # ... (比較モード関連の処理をすべてコメントアウト)
         
         # Tでステータス表示モードの切り替え
         if action == glfw.PRESS and key == glfw.KEY_T:
@@ -995,16 +966,9 @@ class Application:
             if self.status_display_mode == 2:
                 self.print_status_to_console()
         
-        # BでFace Landmarker直接姿勢推定のON/OFF切り替え
-        if action == glfw.PRESS and key == glfw.KEY_B:
-            if not hasattr(self, 'use_direct_pose'):
-                self.use_direct_pose = False
-            
-            self.use_direct_pose = not self.use_direct_pose
-            if self.use_direct_pose:
-                print("Face Landmarker直接姿勢推定を有効化しました")
-            else:
-                print("Face Landmarker直接姿勢推定を無効化しました")
+        # BでFace Landmarker直接姿勢推定のON/OFF切り替え (コメントアウト)
+        # if action == glfw.PRESS and key == glfw.KEY_B:
+        #     # ... (直接姿勢推定関連の処理をすべてコメントアウト)
         
         # Nでモデル描画のON/OFF切り替え
         if action == glfw.PRESS and key == glfw.KEY_N:
@@ -1014,58 +978,17 @@ class Application:
             else:
                 print("モデル描画を無効化しました")
         
-        # VでFace Landmarker描画モードの切り替え
-        if action == glfw.PRESS and key == glfw.KEY_V:
-            if self.use_face_landmarker:
-                self.face_landmarker_draw_mode = (self.face_landmarker_draw_mode + 1) % 4
-                mode_names = ["点のみ", "線とメッシュ", "点+番号", "OFF"]
-                print(f"Face Landmarker描画モードを{mode_names[self.face_landmarker_draw_mode]}に変更しました")
-            else:
-                print("Face Landmarker機能を有効化してください（Lキー）")
+        # VでFace Landmarker描画モードの切り替え (コメントアウト)
+        # if action == glfw.PRESS and key == glfw.KEY_V:
+        #     # ... (Face Landmarker描画モード関連の処理をすべてコメントアウト)
         
-        # GでFace Landmarker PnP姿勢推定のON/OFF切り替え
-        if action == glfw.PRESS and key == glfw.KEY_G:
-            if not hasattr(self, 'use_face_landmarker_pnp'):
-                self.use_face_landmarker_pnp = False
-            
-            self.use_face_landmarker_pnp = not self.use_face_landmarker_pnp
-            if self.use_face_landmarker_pnp:
-                print("Face Landmarker PnP姿勢推定を有効化しました")
-                print("  - Face LandmarkerのランドマークでPnP問題を解決します")
-            else:
-                print("Face Landmarker PnP姿勢推定を無効化しました")
+        # GでFace Landmarker PnP姿勢推定のON/OFF切り替え (コメントアウト)
+        # if action == glfw.PRESS and key == glfw.KEY_G:
+        #     # ... (Face Landmarker PnP関連の処理をすべてコメントアウト)
         
-        # 1-9キーでFace Landmarkerスケール調整
-        if action == glfw.PRESS:
-            scale_keys = {
-                glfw.KEY_1: 0.05,
-                glfw.KEY_2: 0.1,
-                glfw.KEY_3: 0.2,
-                glfw.KEY_4: 0.3,
-                glfw.KEY_5: 0.5,
-                glfw.KEY_6: 0.7,
-                glfw.KEY_7: 1.0,
-                glfw.KEY_8: 0.5,
-                glfw.KEY_9: 0.75
-            }
-            
-            if key in scale_keys:
-                if self.use_face_landmarker:
-                    self.face_landmarker_scale = scale_keys[key]
-                    self.manual_scale_set = True  # 手動調整フラグを設定
-                    print(f"Face Landmarkerスケールを{scale_keys[key]:.1f}に変更しました")
-                    print(f"  - use_direct_pose: {hasattr(self, 'use_direct_pose') and self.use_direct_pose}")
-                    print(f"  - manual_scale_set: {self.manual_scale_set}")
-                else:
-                    print("Face Landmarker機能を有効化してください（Lキー）")
-            
-            # 0キーで自動スケールに戻す
-            elif key == glfw.KEY_0:
-                if self.use_face_landmarker:
-                    self.manual_scale_set = False  # 手動調整フラグをリセット
-                    print("Face Landmarkerスケールを自動調整に戻しました")
-                else:
-                    print("Face Landmarker機能を有効化してください（Lキー）")
+        # 1-9キーでFace Landmarkerスケール調整 (コメントアウト)
+        # if action == glfw.PRESS:
+        #     # ... (スケール調整関連の処理をすべてコメントアウト)
 
     #
     # モデル設定
@@ -1407,22 +1330,22 @@ class Application:
         print("          MediaPipe AR システム状態")
         print("=" * 50)
         print(f"FaceMesh描画 [M]:         {'ON' if self.draw_landmark else 'OFF'}")
-        print(f"Face Detector機能 [F]:    {'ON' if self.use_facedetector else 'OFF'}")
-        print(f"Face Landmarker機能 [L]:  {'ON' if self.use_face_landmarker else 'OFF'}")
-        if self.use_face_landmarker:
-            mode_names = ["点のみ", "線とメッシュ", "点+番号", "OFF"]
-            print(f"FL描画モード [V]:         {mode_names[self.face_landmarker_draw_mode]}")
-        print(f"位置調整機能 [D]:         {'ON' if self.adjust_landmarks else 'OFF'}")
-        print(f"自動スケール機能 [A]:     {'ON' if self.auto_scale_model else 'OFF'}")
-        print(f"姿勢比較モード [C]:       {'ON' if self.comparison_mode else 'OFF'}")
-        print(f"Face Landmarker直接姿勢推定 [B]: {'ON' if hasattr(self, 'use_direct_pose') and self.use_direct_pose else 'OFF'}")
-        print(f"Face Landmarker PnP姿勢推定 [G]: {'ON' if hasattr(self, 'use_face_landmarker_pnp') and self.use_face_landmarker_pnp else 'OFF'}")
+        # print(f"Face Detector機能 [F]:    {'ON' if self.use_facedetector else 'OFF'}")
+        # print(f"Face Landmarker機能 [L]:  {'ON' if self.use_face_landmarker else 'OFF'}")
+        # if self.use_face_landmarker:
+        #     mode_names = ["点のみ", "線とメッシュ", "点+番号", "OFF"]
+        #     print(f"FL描画モード [V]:         {mode_names[self.face_landmarker_draw_mode]}")
+        # print(f"位置調整機能 [D]:         {'ON' if self.adjust_landmarks else 'OFF'}")
+        # print(f"自動スケール機能 [A]:     {'ON' if self.auto_scale_model else 'OFF'}")
+        # print(f"姿勢比較モード [C]:       {'ON' if self.comparison_mode else 'OFF'}")
+        # print(f"Face Landmarker直接姿勢推定 [B]: {'ON' if hasattr(self, 'use_direct_pose') and self.use_direct_pose else 'OFF'}")
+        # print(f"Face Landmarker PnP姿勢推定 [G]: {'ON' if hasattr(self, 'use_face_landmarker_pnp') and self.use_face_landmarker_pnp else 'OFF'}")
         print(f"モデル描画 [N]:           {'ON' if self.draw_model_flag else 'OFF'}")
         
-        # Face Landmarkerスケール情報
-        if self.use_face_landmarker:
-            scale_mode = "手動調整" if hasattr(self, 'manual_scale_set') and self.manual_scale_set else "自動調整"
-            print(f"Face Landmarkerスケール [1-9,0]: {self.face_landmarker_scale:.2f} ({scale_mode})")
+        # Face Landmarkerスケール情報 (コメントアウト)
+        # if self.use_face_landmarker:
+        #     scale_mode = "手動調整" if hasattr(self, 'manual_scale_set') and self.manual_scale_set else "自動調整"
+        #     print(f"Face Landmarkerスケール [1-9,0]: {self.face_landmarker_scale:.2f} ({scale_mode})")
         
         point_mode_names = {0: "全点", 1: "上部", 2: "選択"}
         point_mode = point_mode_names.get(self.detect_stable, "不明")
@@ -1431,10 +1354,12 @@ class Application:
         print("-" * 50)
         print("キー操作:")
         print("  [Q] 終了    [S] 画像保存    [R] 録画")
-        print("  [M] FaceMesh    [F] Face Detector    [L] Face Landmarker")
-        print("  [V] FL描画モード    [A] 自動スケール    [D] 位置調整    [P] 対応点モード")
-        print("  [C] 姿勢比較    [B] FL直接姿勢推定    [G] FL PnP姿勢推定    [N] モデル描画")
-        print("  [T] 表示モード切替    [1-9] FLスケール調整    [0] FLスケール自動に戻す")
+        print("  [M] FaceMesh    [N] モデル描画    [P] 対応点モード")
+        print("  [T] 表示モード切替")
+        # print("  [F] Face Detector    [L] Face Landmarker")
+        # print("  [V] FL描画モード    [A] 自動スケール    [D] 位置調整")
+        # print("  [C] 姿勢比較    [B] FL直接姿勢推定    [G] FL PnP姿勢推定")
+        # print("  [1-9] FLスケール調整    [0] FLスケール自動に戻す")
         print("=" * 50)
         
         if self.status_display_mode == 2:
@@ -1537,20 +1462,20 @@ class Application:
         active_features = []
         if self.draw_landmark:
             active_features.append("FaceMesh")
-        if self.use_facedetector:
-            active_features.append("Face Detector")
-        if self.use_face_landmarker:
-            active_features.append("Face Landmarker")
-        if self.comparison_mode:
-            active_features.append("Pose Comparison")
-        if hasattr(self, 'use_direct_pose') and self.use_direct_pose:
-            active_features.append("FL Direct Pose")
-        if hasattr(self, 'use_face_landmarker_pnp') and self.use_face_landmarker_pnp:
-            active_features.append("FL PnP Pose")
-        if self.auto_scale_model:
-            active_features.append("Auto Scale")
-        if self.adjust_landmarks:
-            active_features.append("Position Adjust")
+        # if self.use_facedetector:
+        #     active_features.append("Face Detector")
+        # if self.use_face_landmarker:
+        #     active_features.append("Face Landmarker")
+        # if self.comparison_mode:
+        #     active_features.append("Pose Comparison")
+        # if hasattr(self, 'use_direct_pose') and self.use_direct_pose:
+        #     active_features.append("FL Direct Pose")
+        # if hasattr(self, 'use_face_landmarker_pnp') and self.use_face_landmarker_pnp:
+        #     active_features.append("FL PnP Pose")
+        # if self.auto_scale_model:
+        #     active_features.append("Auto Scale")
+        # if self.adjust_landmarks:
+        #     active_features.append("Position Adjust")
         if self.draw_model_flag:
             active_features.append("Model Draw")
         
@@ -1572,7 +1497,7 @@ class Application:
         box_x1 = self.width - 450  # 幅を少し広げて比較モードも表示
         box_y1 = 10
         box_x2 = self.width - 10
-        box_y2 = 390  # Face Landmarker PnP行を追加したので高さを増やす
+        box_y2 = 200  # Face DetectorとFace Landmarkerを削除したので高さを減らす
         
         overlay = image.copy()
         cv2.rectangle(overlay, (box_x1, box_y1), (box_x2, box_y2), (0, 0, 0), -1)
@@ -1595,48 +1520,48 @@ class Application:
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, mesh_color, 1)
         y_offset += line_height
         
-        # Face Detector機能の状態 (Fキー)
-        face_detector_status = "ON" if self.use_facedetector else "OFF"
-        face_detector_color = (0, 255, 0) if self.use_facedetector else (128, 128, 128)
-        cv2.putText(image, f"[F] Face Detector: {face_detector_status}", (text_x, y_offset),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, face_detector_color, 1)
-        y_offset += line_height
+        # Face Detector機能の状態 (Fキー) - コメントアウト
+        # face_detector_status = "ON" if self.use_facedetector else "OFF"
+        # face_detector_color = (0, 255, 0) if self.use_facedetector else (128, 128, 128)
+        # cv2.putText(image, f"[F] Face Detector: {face_detector_status}", (text_x, y_offset),
+        #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, face_detector_color, 1)
+        # y_offset += line_height
         
-        # Face Landmarker機能の状態 (Lキー)
-        face_landmarker_status = "ON" if self.use_face_landmarker else "OFF"
-        face_landmarker_color = (0, 255, 0) if self.use_face_landmarker else (128, 128, 128)
-        cv2.putText(image, f"[L] Face Landmarker: {face_landmarker_status}", (text_x, y_offset),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, face_landmarker_color, 1)
-        y_offset += line_height
+        # Face Landmarker機能の状態 (Lキー) - コメントアウト
+        # face_landmarker_status = "ON" if self.use_face_landmarker else "OFF"
+        # face_landmarker_color = (0, 255, 0) if self.use_face_landmarker else (128, 128, 128)
+        # cv2.putText(image, f"[L] Face Landmarker: {face_landmarker_status}", (text_x, y_offset),
+        #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, face_landmarker_color, 1)
+        # y_offset += line_height
         
-        # Face Landmarker描画モード (Vキー)
-        if self.use_face_landmarker:
-            mode_names = ["Points", "Mesh", "Points+Num", "OFF"]
-            mode_name = mode_names[self.face_landmarker_draw_mode]
-            cv2.putText(image, f"[V] FL Draw Mode: {mode_name}", (text_x, y_offset),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 1)
-            y_offset += line_height
+        # Face Landmarker描画モード (Vキー) - コメントアウト
+        # if self.use_face_landmarker:
+        #     mode_names = ["Points", "Mesh", "Points+Num", "OFF"]
+        #     mode_name = mode_names[self.face_landmarker_draw_mode]
+        #     cv2.putText(image, f"[V] FL Draw Mode: {mode_name}", (text_x, y_offset),
+        #                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 1)
+        #     y_offset += line_height
         
-        # 比較モードの状態 (Cキー)
-        comparison_status = "ON" if self.comparison_mode else "OFF"
-        comparison_color = (0, 255, 0) if self.comparison_mode else (128, 128, 128)
-        cv2.putText(image, f"[C] Pose Comparison: {comparison_status}", (text_x, y_offset),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, comparison_color, 1)
-        y_offset += line_height
+        # 比較モードの状態 (Cキー) - コメントアウト
+        # comparison_status = "ON" if self.comparison_mode else "OFF"
+        # comparison_color = (0, 255, 0) if self.comparison_mode else (128, 128, 128)
+        # cv2.putText(image, f"[C] Pose Comparison: {comparison_status}", (text_x, y_offset),
+        #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, comparison_color, 1)
+        # y_offset += line_height
         
-        # Face Landmarker直接姿勢推定の状態 (Bキー)
-        direct_pose_status = "ON" if hasattr(self, 'use_direct_pose') and self.use_direct_pose else "OFF"
-        direct_pose_color = (0, 255, 0) if hasattr(self, 'use_direct_pose') and self.use_direct_pose else (128, 128, 128)
-        cv2.putText(image, f"[B] FL Direct Pose: {direct_pose_status}", (text_x, y_offset),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, direct_pose_color, 1)
-        y_offset += line_height
+        # Face Landmarker直接姿勢推定の状態 (Bキー) - コメントアウト
+        # direct_pose_status = "ON" if hasattr(self, 'use_direct_pose') and self.use_direct_pose else "OFF"
+        # direct_pose_color = (0, 255, 0) if hasattr(self, 'use_direct_pose') and self.use_direct_pose else (128, 128, 128)
+        # cv2.putText(image, f"[B] FL Direct Pose: {direct_pose_status}", (text_x, y_offset),
+        #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, direct_pose_color, 1)
+        # y_offset += line_height
         
-        # Face Landmarker PnP姿勢推定の状態 (Gキー)
-        fl_pnp_status = "ON" if hasattr(self, 'use_face_landmarker_pnp') and self.use_face_landmarker_pnp else "OFF"
-        fl_pnp_color = (0, 255, 0) if hasattr(self, 'use_face_landmarker_pnp') and self.use_face_landmarker_pnp else (128, 128, 128)
-        cv2.putText(image, f"[G] FL PnP Pose: {fl_pnp_status}", (text_x, y_offset),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, fl_pnp_color, 1)
-        y_offset += line_height
+        # Face Landmarker PnP姿勢推定の状態 (Gキー) - コメントアウト
+        # fl_pnp_status = "ON" if hasattr(self, 'use_face_landmarker_pnp') and self.use_face_landmarker_pnp else "OFF"
+        # fl_pnp_color = (0, 255, 0) if hasattr(self, 'use_face_landmarker_pnp') and self.use_face_landmarker_pnp else (128, 128, 128)
+        # cv2.putText(image, f"[G] FL PnP Pose: {fl_pnp_status}", (text_x, y_offset),
+        #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, fl_pnp_color, 1)
+        # y_offset += line_height
         
         # モデル描画の状態 (Nキー)
         model_draw_status = "ON" if self.draw_model_flag else "OFF"
@@ -1645,27 +1570,27 @@ class Application:
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, model_draw_color, 1)
         y_offset += line_height
         
-        # 位置調整機能の状態 (Dキー)
-        adjust_status = "ON" if self.adjust_landmarks else "OFF"
-        adjust_color = (0, 255, 0) if self.adjust_landmarks else (128, 128, 128)
-        status_text = f"[D] Position Adjust: {adjust_status}"
-        if self.adjust_landmarks and not self.use_facedetector:
-            status_text += " (Need F key ON)"
-            adjust_color = (0, 165, 255)  # オレンジ色
-        cv2.putText(image, status_text, (text_x, y_offset),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, adjust_color, 1)
-        y_offset += line_height
+        # 位置調整機能の状態 (Dキー) - コメントアウト
+        # adjust_status = "ON" if self.adjust_landmarks else "OFF"
+        # adjust_color = (0, 255, 0) if self.adjust_landmarks else (128, 128, 128)"
+        # status_text = f"[D] Position Adjust: {adjust_status}"
+        # if self.adjust_landmarks and not self.use_facedetector:
+        #     status_text += " (Need F key ON)"
+        #     adjust_color = (0, 165, 255)  # オレンジ色
+        # cv2.putText(image, status_text, (text_x, y_offset),
+        #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, adjust_color, 1)
+        # y_offset += line_height
         
-        # 自動スケール機能の状態 (Aキー)
-        scale_status = "ON" if self.auto_scale_model else "OFF"
-        scale_color = (0, 255, 0) if self.auto_scale_model else (128, 128, 128)
-        status_text = f"[A] Auto Scale: {scale_status}"
-        if self.auto_scale_model and not self.use_facedetector:
-            status_text += " (Need F key ON)"
-            scale_color = (0, 165, 255)  # オレンジ色
-        cv2.putText(image, status_text, (text_x, y_offset),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, scale_color, 1)
-        y_offset += line_height
+        # 自動スケール機能の状態 (Aキー) - コメントアウト
+        # scale_status = "ON" if self.auto_scale_model else "OFF"
+        # scale_color = (0, 255, 0) if self.auto_scale_model else (128, 128, 128)
+        # status_text = f"[A] Auto Scale: {scale_status}"
+        # if self.auto_scale_model and not self.use_facedetector:
+        #     status_text += " (Need F key ON)"
+        #     scale_color = (0, 165, 255)  # オレンジ色
+        # cv2.putText(image, status_text, (text_x, y_offset),
+        #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, scale_color, 1)
+        # y_offset += line_height
         
         # 対応点モード (Pキー)
         point_mode_names = {0: "All Points", 1: "Upper Points", 2: "Selected Points"}
