@@ -286,7 +286,7 @@ class Application:
         
         # === 静的画像処理（単一画像） ===
         # 画像の形式の変換なリアルタイムの場合は、USBCameraクラス内で自動的にBGR→RGB変換
-        static_image_path = "/home/misa/lab/mediapipe/FaceLandmark/mqodata/test6.jpg"
+        static_image_path = "/home/misa/lab/mediapipe/FaceLandmark/mqodata/input/masked4_face_up.jpg"
         bgr_image = cv2.imread(static_image_path)
         success = bgr_image is not None
 
@@ -318,50 +318,43 @@ class Application:
         # 顔特徴点検出(FaceMesh)を実行
         #
         self.face_mesh = self.face_mesh_solution.process(self.image)
-        
-        #
-        # Face Detector追加処理 (コメントアウト)
-        #
-        # if self.use_facedetector:
-        #     self.face_detection = self.face_detector_solution.process(self.image)
-        
-        #
-        # Face Landmarker処理 (コメントアウト)
-        #
-        # if self.use_face_landmarker and self.face_landmarker_solution:
-        #     try:
-        #         # MediaPipe image format に変換
-        #         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=self.image)
-        #         self.face_landmarker_results = self.face_landmarker_solution.detect(mp_image)
-        #     except Exception as e:
-        #         print(f"Face Landmarker処理エラー: {e}")
-        #         self.face_landmarker_results = None
-        
+
+        #20251204(ishikawa) 152番のランドマークの位置を上書き変更
+        if self.face_mesh.multi_face_landmarks:
+            for face_landmarks in self.face_mesh.multi_face_landmarks:
+                if len(face_landmarks.landmark) > 152:
+                    # ピクセル座標をMediaPipeの正規化座標(0.0-1.0)に変換
+                    face_landmarks.landmark[152].x = 234  / self.width
+                    face_landmarks.landmark[152].y = 437 / self.height 
+
+        # 変更後のランドマーク152番を描画（MediaPipeの座標から取得）
+        x = int(face_landmarks.landmark[152].x * self.width)
+        y = int(face_landmarks.landmark[152].y * self.height)
+        cv2.circle(self.rgb_image_for_display, (x, y), 5, (0, 0, 255), -1)  # 赤い円
+
+
+
+
+
         #
         # 画像の描画を実行
         #
         self.image.flags.writeable = True
 
-        # ランドマークの描画（RGB画像に描画）
-        if self.draw_landmark:
-            # ランドマークを描画するメソッドを実行
-            self.draw_landmarks(self.rgb_image_for_display)
-        
-        # Face Detector追加描画（RGB画像に描画）(コメントアウト)
-        # if self.use_facedetector:
-        #     self.draw_face_detection(self.rgb_image_for_display)
-        
-        # Face Landmarker描画 (コメントアウト)
-        # if self.use_face_landmarker:
-        #     #elf.draw_face_landmarker(self.image) #20251105コメントアウト
-        #     pass
-        
         # ステータス表示を追加（RGB画像に描画）
         self.draw_status_info(self.rgb_image_for_display)
 
         # RGB画像を描画するメソッドを実行
-        self.glwindow.draw_image(self.rgb_image_for_display)
-        
+        self.glwindow.draw_image(self.rgb_image_for_display)    
+            
+
+
+        # ランドマークの描画（RGB画像に描画）
+        if self.draw_landmark:
+            # ランドマークを描画するメソッドを実行
+            self.draw_landmarks(self.rgb_image_for_display)
+
+
         # 
         # カメラ姿勢推定
         # 顔のランドマーク検出
@@ -401,6 +394,35 @@ class Application:
                     if idx in point_list:
                         # 画像サイズに合わせて正規化  
                         point_2D.append([p.x * self.width, p.y * self.height])
+            
+            # # 152番のランドマークの座標を固定値(273, 457)に書き換え(ishikawa)
+            # if len(point_2D) > 152:
+            #     point_2D[152] = [273, 457]
+            #     print(f"Replaced point_2D[152] with [299, 456]")
+            # else:
+            #     print(f"Cannot replace point_2D[152]: array length is {len(point_2D)}")
+            
+
+            #--削除範囲--
+            # # 152番のランドマークがpoint_listの何番目にあるかを確認
+            # if 152 in point_list:
+            #     # point_listが配列であることを確認してからnp.whereを使用
+            #     point_list_array = np.array(point_list)
+            #     where_result = np.where(point_list_array == 152)[0]
+                
+            #     if len(where_result) > 0:
+            #         idx_152_in_array = where_result[0]
+            #         # point_2D[idx_152_in_array]を書き換える
+            #         point_2D[idx_152_in_array] = [273, 457]
+
+            
+            # # 152番のランドマーク位置に赤い円を描画
+            # if len(point_2D) > 152:
+            #     x, y = int(point_2D[152][0]), int(point_2D[152][1])
+            #     cv2.circle(self.rgb_image_for_display, (x, y), 5, (0, 0, 255), -1)  # 半径5の赤い塗りつぶし円
+
+            #--削除範囲--
+
 
             #
             # カメラ位置、姿勢計算
@@ -440,7 +462,7 @@ class Application:
             #
             print("not detection")    
 
-            
+
         # 関数実行回数を更新
         self.count_func += 1
         
@@ -455,6 +477,7 @@ class Application:
     #
     # モデル描画に関する処理を行う関数
     #
+
     def draw_model(self, scale_x = 1.0, scale_y = 1.0):
         #
         # モデル表示に関するOpenGLの値の設定
@@ -1201,120 +1224,120 @@ class Application:
     #
     # Face LandmarkerランドマークによるPnP姿勢推定関数
     #
-    def compute_pose_from_face_landmarker_pnp(self):
-        """
-        Face Landmarkerのランドマークを使用してPnP問題を解決し姿勢推定
-        """
-        try:
-            if (not self.face_landmarker_results or 
-                not hasattr(self.face_landmarker_results, 'face_landmarks') or
-                not self.face_landmarker_results.face_landmarks):
-                return False, None, None
+    # def compute_pose_from_face_landmarker_pnp(self):
+    #     """
+    #     Face Landmarkerのランドマークを使用してPnP問題を解決し姿勢推定
+    #     """
+    #     try:
+    #         if (not self.face_landmarker_results or 
+    #             not hasattr(self.face_landmarker_results, 'face_landmarks') or
+    #             not self.face_landmarker_results.face_landmarks):
+    #             return False, None, None
             
-            # Face Landmarkerのランドマークを取得
-            face_landmarks = self.face_landmarker_results.face_landmarks[0]
+    #         # Face Landmarkerのランドマークを取得
+    #         face_landmarks = self.face_landmarker_results.face_landmarks[0]
             
-            # 2D座標の抽出（Face Landmarkerのランドマーク）
-            point_2D = []
-            point_3D = []
+    #         # 2D座標の抽出（Face Landmarkerのランドマーク）
+    #         point_2D = []
+    #         point_3D = []
             
-            # 対応点を指定（顔全体を用いる場合は0）
-            if self.detect_stable == 0:
-                point_list = self.point_list
-                point_3D = self.point_3D
-            elif self.detect_stable == 1:
-                point_list = self.point_list1
-                point_3D = self.point_3D1
-            elif self.detect_stable == 2:
-                point_list = self.point_list2
-                point_3D = self.point_3D2
-            else:
-                point_list = self.point_list
-                point_3D = self.point_3D
+    #         # 対応点を指定（顔全体を用いる場合は0）
+    #         if self.detect_stable == 0:
+    #             point_list = self.point_list
+    #             point_3D = self.point_3D
+    #         elif self.detect_stable == 1:
+    #             point_list = self.point_list1
+    #             point_3D = self.point_3D1
+    #         elif self.detect_stable == 2:
+    #             point_list = self.point_list2
+    #             point_3D = self.point_3D2
+    #         else:
+    #             point_list = self.point_list
+    #             point_3D = self.point_3D
             
-            # Face Landmarkerのランドマークから対応点を抽出
-            for idx in point_list:
-                if idx < len(face_landmarks):
-                    landmark = face_landmarks[idx]
-                    # 正規化座標をピクセル座標に変換
-                    x = landmark.x * self.width
-                    y = landmark.y * self.height
-                    point_2D.append([x, y])
+    #         # Face Landmarkerのランドマークから対応点を抽出
+    #         for idx in point_list:
+    #             if idx < len(face_landmarks):
+    #                 landmark = face_landmarks[idx]
+    #                 # 正規化座標をピクセル座標に変換
+    #                 x = landmark.x * self.width
+    #                 y = landmark.y * self.height
+    #                 point_2D.append([x, y])
             
-            # PnP問題を解決してカメラ姿勢を推定
-            if len(point_2D) >= 6:  # 最低6点必要
-                point_2D = np.array(point_2D, dtype=np.float32)
-                point_3D = np.array(point_3D, dtype=np.float32)
+    #         # PnP問題を解決してカメラ姿勢を推定
+    #         if len(point_2D) >= 6:  # 最低6点必要
+    #             point_2D = np.array(point_2D, dtype=np.float32)
+    #             point_3D = np.array(point_3D, dtype=np.float32)
                 
-                success, R, t, r = self.estimator.compute_camera_pose(
-                    point_3D, point_2D, use_objpoint=True)
+    #             success, R, t, r = self.estimator.compute_camera_pose(
+    #                 point_3D, point_2D, use_objpoint=True)
                 
-                if success:
-                    # モデルビュー行列を生成
-                    self.generate_modelview(R, t)
+    #             if success:
+    #                 # モデルビュー行列を生成
+    #                 self.generate_modelview(R, t)
                     
-                    # 顔の方向ベクトルを計算
-                    vector = self.estimator.compute_head_vector()
+    #                 # 顔の方向ベクトルを計算
+    #                 vector = self.estimator.compute_head_vector()
                     
-                    # 顔のオイラー角を計算
-                    angle = self.estimator.compute_head_angle(R, t)
+    #                 # 顔のオイラー角を計算
+    #                 angle = self.estimator.compute_head_angle(R, t)
                     
-                    return True, vector, angle
-                else:
-                    return False, None, None
-            else:
-                print(f"Face Landmarker PnP: 対応点が不足しています ({len(point_2D)}/6)")
-                return False, None, None
+    #                 return True, vector, angle
+    #             else:
+    #                 return False, None, None
+    #         else:
+    #             print(f"Face Landmarker PnP: 対応点が不足しています ({len(point_2D)}/6)")
+    #             return False, None, None
                 
-        except Exception as e:
-            print(f"Face Landmarker PnP姿勢推定エラー: {e}")
-            return False, None, None
+    #     except Exception as e:
+    #         print(f"Face Landmarker PnP姿勢推定エラー: {e}")
+    #         return False, None, None
     
-    #
-    # Face Landmarkerから直接姿勢を推定する関数
-    #
-    def compute_pose_from_face_landmarker(self):
-        """
-        Face Landmarkerの変換行列から直接姿勢を推定
-        """
-        try:
-            if (not self.face_landmarker_results or 
-                not hasattr(self.face_landmarker_results, 'facial_transformation_matrixes') or
-                not self.face_landmarker_results.facial_transformation_matrixes):
-                return False, None, None
+    # #
+    # # Face Landmarkerから直接姿勢を推定する関数
+    # #
+    # def compute_pose_from_face_landmarker(self):
+    #     """
+    #     Face Landmarkerの変換行列から直接姿勢を推定
+    #     """
+    #     try:
+    #         if (not self.face_landmarker_results or 
+    #             not hasattr(self.face_landmarker_results, 'facial_transformation_matrixes') or
+    #             not self.face_landmarker_results.facial_transformation_matrixes):
+    #             return False, None, None
             
-            # 変換行列を取得
-            transformation_matrix = np.array(
-                self.face_landmarker_results.facial_transformation_matrixes[0]
-            ).reshape(4, 4)
+    #         # 変換行列を取得
+    #         transformation_matrix = np.array(
+    #             self.face_landmarker_results.facial_transformation_matrixes[0]
+    #         ).reshape(4, 4)
             
-            # 回転行列と並進ベクトルを抽出
-            R = transformation_matrix[:3, :3]
-            t = transformation_matrix[:3, 3]
+    #         # 回転行列と並進ベクトルを抽出
+    #         R = transformation_matrix[:3, :3]
+    #         t = transformation_matrix[:3, 3]
             
-            # スケール係数を更新（変換行列の大きさから推定）
-            # 手動調整がされていない場合のみ自動推定
-            scale_estimate = np.linalg.norm(t)
-            if scale_estimate > 0 and (not hasattr(self, 'manual_scale_set') or not self.manual_scale_set):
-                self.face_landmarker_scale = scale_estimate
+    #         # スケール係数を更新（変換行列の大きさから推定）
+    #         # 手動調整がされていない場合のみ自動推定
+    #         scale_estimate = np.linalg.norm(t)
+    #         if scale_estimate > 0 and (not hasattr(self, 'manual_scale_set') or not self.manual_scale_set):
+    #             self.face_landmarker_scale = scale_estimate
             
-            # 手動スケール調整が有効な場合でも、並進ベクトル（位置）は変更しない
-            # スケールはモデル描画時のみ適用される
+    #         # 手動スケール調整が有効な場合でも、並進ベクトル（位置）は変更しない
+    #         # スケールはモデル描画時のみ適用される
             
-            # モデルビュー行列を生成
-            self.generate_modelview(R, t)
+    #         # モデルビュー行列を生成
+    #         self.generate_modelview(R, t)
             
-            # 顔の方向ベクトルを計算
-            vector = self.estimator.compute_head_vector()
+    #         # 顔の方向ベクトルを計算
+    #         vector = self.estimator.compute_head_vector()
             
-            # 顔のオイラー角を計算
-            angle = self.estimator.compute_head_angle(R, t)
+    #         # 顔のオイラー角を計算
+    #         angle = self.estimator.compute_head_angle(R, t)
             
-            return True, vector, angle
+    #         return True, vector, angle
             
-        except Exception as e:
-            print(f"Face Landmarker姿勢推定エラー: {e}")
-            return False, None, None
+    #     except Exception as e:
+    #         print(f"Face Landmarker姿勢推定エラー: {e}")
+    #         return False, None, None
     
     #
     # コンソールに状態を出力する関数
