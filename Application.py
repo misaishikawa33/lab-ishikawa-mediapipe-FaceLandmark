@@ -46,45 +46,13 @@ class Application:
         self.detect_stable = 0
         # 顔のランドマークを記述するかどうか
         self.draw_landmark = draw_landmark
-        # Face Detector機能を使用するかどうか (コメントアウト)
-        # self.use_facedetector = use_facedetector
-        self.use_facedetector = False  # コメントアウト用のデフォルト値
 
-        # モデル自動スケーリング機能 (コメントアウト)
-        # self.auto_scale_model = False
-        # self.model_scale_factor = 1.0
-        self.auto_scale_model = False  # コメントアウト用のデフォルト値
-        self.model_scale_factor = 1.0  # コメントアウト用のデフォルト値
-        
-        # ランドマーク位置調整機能（右端・左端のみ）
-        self.adjust_landmarks = False
-        self.alignment_info = None
-        
-        # Face Landmarker機能 (コメントアウト)
-        # self.use_face_landmarker = False
-        # self.face_landmarker = None
-        # self.face_landmarker_results = None
-        self.use_face_landmarker = False  # コメントアウト用のデフォルト値
-        self.face_landmarker_results = None  # コメントアウト用のデフォルト値
-        
-        # Face Landmarker描画モード (コメントアウト)
-        # self.face_landmarker_draw_mode = 0
-        self.face_landmarker_draw_mode = 0  # コメントアウト用のデフォルト値
-        
-        # Face LandmarkerランドマークによるPnP姿勢推定機能 (コメントアウト)
-        # self.use_face_landmarker_pnp = False
-        self.use_face_landmarker_pnp = False  # コメントアウト用のデフォルト値
+        # 顔検出モデル使用フラグ
+        self.use_face_landmarker = False 
+        self.face_landmarker_results = None  
         
         # モデル描画制御
         self.draw_model_flag = True  # モデル描画のON/OFF
-        
-        # 比較モード関連 (コメントアウト)
-        # self.comparison_mode = False
-        # self.comparison_results = []
-        # self.use_direct_pose = False  # Face Landmarkerの直接姿勢推定
-        self.comparison_mode = False  # コメントアウト用のデフォルト値
-        self.comparison_results = []  # コメントアウト用のデフォルト値
-        self.use_direct_pose = False  # コメントアウト用のデフォルト値
         
         # ランドマーク位置調整機能
         self.adjust_landmarks = False
@@ -160,34 +128,6 @@ class Application:
             circle_radius = 1)
         
         #
-        # Face Detector追加機能 (コメントアウト)
-        #
-        # if self.use_facedetector:
-        #     # より高精度なFace Detector設定,
-        #     # 近距離model_selection=0, 遠距離model_selection=1
-        #     #model_selectionは信頼度x以上を顔とする
-
-        #     self.face_detector_solution = mp.solutions.face_detection.FaceDetection(
-        #         model_selection=0, 
-        #         min_detection_confidence=0.5)
-            
-        #     # 追加のランドマーク描画設定
-        #     self.detector_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
-        #         thickness = 2, 
-        #         circle_radius = 2, 
-        #         color = (0, 255, 0))
-        #     print("Face Detector機能が有効化されました")
-        
-        #
-        # Face Landmarker機能の初期化 (コメントアウト)
-        #
-        # self.face_landmarker_solution = None
-        # self.face_landmarker_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
-        #     thickness = 2, 
-        #     circle_radius = 3, 
-        #     color = (255, 0, 255))  # マゼンタ色
-        
-        #
         # マスク着用有無の推論モデルYOLOv8(未使用)
         # train : Yolov8, datasets : face mask dataset(Yolo format)
         # initial_weight : yolov8n.pt , epoch : 200 , image_size : 640
@@ -219,51 +159,6 @@ class Application:
         self.u0    = u0
         self.v0    = v0
 
-    #
-    # マスクの着用判別(実行に時間がかかるため、リアルタイムでの使用が難しく未使用)
-    #
-    # def Yolov8(self):
-    #     if self.count_func % 100 == 0:
-    #         # 画像に対して顔の占める割合が大きすぎると誤判別するため、リサイズ
-    #         image = cv2.cvtColor (self.image, cv2.COLOR_BGR2RGB)
-    #         img_resized = cv2.resize(image, dsize=(self.width // 2, self.height //2))
-    #         back = np.zeros((self.height, self.width, 3))
-    #         back[0:self.height // 2, 0:self.width // 2] = img_resized
-    #         # save=Trueで結果を保存
-    #         results = self.mask_model(back, max_det=1) 
-    #         if(len(results[0]) == 1):
-    #             names = results[0].names
-    #             # 画像サイズを半分にしているため、座標を2倍してもとのスケールに戻す
-    #             cls = results[0].boxes.cls
-    #             # conf = results[0].boxes.conf
-    #             name = names[abs(int(cls) - 1)]
-    #             if name == "no-mask":
-    #                 self.mask = False
-    #             else:
-    #                 self.mask = True
-    #         else:
-    #             # 検出できなかった場合、self.maskはそのまま
-    #             pass
-    #     else:
-    #         pass
-        
-    #
-    # 顔認識(マスクを着用している場合でも構成度で顔検出を行えるが、実行に時間がかかるため未使用)
-    #
-    # def Retinaface(self):
-    #     if self.use_faceanalysis:
-    #         bboxes, kpss = self.detector.detect(self.image, max_num=1)
-    #         if len(bboxes) == 1:
-    #             self.bbox = bboxes[0]
-    #             self.kps = kpss[0]
-    #             return True
-    #         else:
-    #             return False
-        
-    #
-    # カメラ映像を表示するための関数
-    # ここに作成するアプリケーションの大部分の処理を書く
-    #
     def display_func(self, window):
 
         # 初回実行
@@ -310,11 +205,6 @@ class Application:
         # 描画設定
         self.image.flags.writeable = False
        
-        # マスク検出のメソッドを実行
-        # if self.use_mask:
-        #     self.Yolov8()
-        
-        #
         # 顔特徴点検出(FaceMesh)を実行
         #
         self.face_mesh = self.face_mesh_solution.process(self.image)
@@ -330,10 +220,7 @@ class Application:
         # 変更後のランドマーク152番を描画（MediaPipeの座標から取得）
         x = int(face_landmarks.landmark[152].x * self.width)
         y = int(face_landmarks.landmark[152].y * self.height)
-        cv2.circle(self.rgb_image_for_display, (x, y), 5, (0, 0, 255), -1)  # 赤い円
-
-
-
+        cv2.circle(self.rgb_image_for_display, (x, y), 5, (0, 0, 255), -1)  
 
 
         #
@@ -346,6 +233,12 @@ class Application:
 
         # RGB画像を描画するメソッドを実行
         self.glwindow.draw_image(self.rgb_image_for_display)    
+
+        # ランドマークの描画（RGB画像に描画）
+        if self.draw_landmark:
+            # ランドマークを描画するメソッドを実行
+            self.draw_landmarks(self.rgb_image_for_display)
+
             
 
 
@@ -395,59 +288,13 @@ class Application:
                         # 画像サイズに合わせて正規化  
                         point_2D.append([p.x * self.width, p.y * self.height])
             
-            # # 152番のランドマークの座標を固定値(273, 457)に書き換え(ishikawa)
-            # if len(point_2D) > 152:
-            #     point_2D[152] = [273, 457]
-            #     print(f"Replaced point_2D[152] with [299, 456]")
-            # else:
-            #     print(f"Cannot replace point_2D[152]: array length is {len(point_2D)}")
-            
-
-            #--削除範囲--
-            # # 152番のランドマークがpoint_listの何番目にあるかを確認
-            # if 152 in point_list:
-            #     # point_listが配列であることを確認してからnp.whereを使用
-            #     point_list_array = np.array(point_list)
-            #     where_result = np.where(point_list_array == 152)[0]
-                
-            #     if len(where_result) > 0:
-            #         idx_152_in_array = where_result[0]
-            #         # point_2D[idx_152_in_array]を書き換える
-            #         point_2D[idx_152_in_array] = [273, 457]
-
-            
-            # # 152番のランドマーク位置に赤い円を描画
-            # if len(point_2D) > 152:
-            #     x, y = int(point_2D[152][0]), int(point_2D[152][1])
-            #     cv2.circle(self.rgb_image_for_display, (x, y), 5, (0, 0, 255), -1)  # 半径5の赤い塗りつぶし円
-
-            #--削除範囲--
 
 
             #
             # カメラ位置、姿勢計算
-            #
-            # 比較モード、Face Landmarker関連機能はコメントアウトされているため
             # 常に通常のPnP方式を使用
             success, vector, angle = self.compute_camera_pose(point_2D, point_3D)
             self.angle = angle
-            
-            #
-            # モデル自動スケーリングが有効な場合、スケールを計算 (コメントアウト)
-            #
-            # if self.auto_scale_model and self.use_facedetector:
-            #     self.model_scale_factor = self.calculate_model_scale_from_ears()
-            # else:
-            #     self.model_scale_factor = 1.0
-            self.model_scale_factor = 1.0  # 固定値に設定
-            
-            #
-            # ランドマーク位置調整が有効な場合、調整情報を計算 (コメントアウト)
-            #
-            # if self.adjust_landmarks and self.use_facedetector:
-            #     self.alignment_info = self.calculate_landmark_alignment()
-            # else:
-            #     self.alignment_info = None
             self.alignment_info = None  # 固定値に設定
             
             #
@@ -534,9 +381,9 @@ class Application:
             model_scale_Y = 1.0 * scale_y * self.face_landmarker_scale
             model_scale_Z = 1.0 * self.face_landmarker_scale
         else:
-            model_scale_X = 1.0 * scale_x * self.model_scale_factor
-            model_scale_Y = 1.0 * scale_y * self.model_scale_factor
-            model_scale_Z = 1.0 * self.model_scale_factor 
+            model_scale_X = 1.0 * scale_x
+            model_scale_Y = 1.0 * scale_y
+            model_scale_Z = 1.0 
     
         # 世界座標系の描画
         if self.draw_axis:
@@ -546,10 +393,8 @@ class Application:
             glTranslatef(model_shift_X, model_shift_Y, model_shift_Z)
             # 回転(x方向に90度)
             glRotatef(90.0, 1.0, 0.0, 0.0)
-            # 世界座標系の軸を描画する関数
-            
-            # xz平面のグリッドを記述するメソッド
-            #self.glwindow.draw_XZ_plane(mesh_size, mesh_grid)
+
+
             # カメラをもとに戻す
             glRotatef(90.0, -1.0, 0.0, 0.0)
             glTranslatef(-model_shift_X, -model_shift_Y, -model_shift_Z)
@@ -568,302 +413,12 @@ class Application:
             # GL_LIGHTNING(光源0)の機能を無効にする            
             glDisable(GL_LIGHTING)
             glDisable(GL_LIGHT0)
-    
-        
-    #
-    # 検出したランドマークを画像上に描画する関数
-    #
-    def draw_landmarks(self, image):
-        if self.face_mesh.multi_face_landmarks:
-            for face_landmarks in self.face_mesh.multi_face_landmarks:
-                # ランドマーク位置調整が有効な場合、234と454の座標を調整
-                if self.adjust_landmarks and self.alignment_info:
-                    # ランドマークのコピーを作成
-                    import copy
-                    landmarks_copy = copy.deepcopy(face_landmarks)
-                    
-                    # ランドマーク234（右端）をFaceDetectionの右耳に合わせる
-                    landmarks_copy.landmark[234].x = self.alignment_info['right_ear_target'][0] / self.width
-                    landmarks_copy.landmark[234].y = self.alignment_info['right_ear_target'][1] / self.height
-                    
-                    # ランドマーク454（左端）をFaceDetectionの左耳に合わせる
-                    landmarks_copy.landmark[454].x = self.alignment_info['left_ear_target'][0] / self.width
-                    landmarks_copy.landmark[454].y = self.alignment_info['left_ear_target'][1] / self.height
-                    
-                    mp.solutions.drawing_utils.draw_landmarks(
-                        image,
-                        landmarks_copy,
-                        # 描画モード
-                        mp.solutions.face_mesh.FACEMESH_TESSELATION,
-                        self.drawing_spec,
-                        self.drawing_spec)
-                else:
-                    # 通常の描画
-                    mp.solutions.drawing_utils.draw_landmarks(
-                        image,
-                        face_landmarks,
-                        # 描画モード
-                        mp.solutions.face_mesh.FACEMESH_TESSELATION,
-                        self.drawing_spec,
-                        self.drawing_spec)
-    
-    #
-    # Face Detector検出結果を画像上に描画する関数（バウンディングボックスなし）
-    #
-    def draw_face_detection(self, image):
-        if self.face_detection.detections:
-            for detection in self.face_detection.detections:
-                # バウンディングボックスを描画せず、キーポイントのみを描画
-                if detection.location_data.relative_keypoints:
-                    for idx, keypoint in enumerate(detection.location_data.relative_keypoints):
-                        # キーポイントの座標を画像サイズに変換
-                        x = int(keypoint.x * self.width)
-                        y = int(keypoint.y * self.height)
-                        # キーポイントを円で描画
-                        cv2.circle(image, (x, y), 
-                                   self.detector_drawing_spec.circle_radius, 
-                                   self.detector_drawing_spec.color, 
-                                   self.detector_drawing_spec.thickness)
-                        # キーポイント番号を表示
-                        cv2.putText(image, str(idx), (x + 5, y - 5), 
-                                   cv2.FONT_HERSHEY_SIMPLEX, 0.4, (0, 255, 0), 1)
-        
-        # ランドマーク位置調整が有効な場合、デバッグ表示を追加
-        if self.adjust_landmarks and self.alignment_info and self.face_mesh.multi_face_landmarks:
-            # FaceMeshのランドマーク取得
-            face_landmarks = self.face_mesh.multi_face_landmarks[0]
-            
-            # 元のランドマーク234と454の位置を描画（赤色の円）
-            original_234_x = int(face_landmarks.landmark[234].x * self.width)
-            original_234_y = int(face_landmarks.landmark[234].y * self.height)
-            original_454_x = int(face_landmarks.landmark[454].x * self.width)
-            original_454_y = int(face_landmarks.landmark[454].y * self.height)
-            
-            cv2.circle(image, (original_234_x, original_234_y), 10, (0, 0, 255), -1)  # 赤色: 元の234
-            cv2.circle(image, (original_454_x, original_454_y), 10, (0, 0, 255), -1)  # 赤色: 元の454
-            # cv2.putText(image, "234(org)", (original_234_x + 12, original_234_y), 
-            #            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-            # cv2.putText(image, "454(org)", (original_454_x + 12, original_454_y), 
-            #            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 255), 2)
-            
-            # 目標位置（FaceDetectionの耳）を描画（青色の円）
-            target_234_x = int(self.alignment_info['right_ear_target'][0])
-            target_234_y = int(self.alignment_info['right_ear_target'][1])
-            target_454_x = int(self.alignment_info['left_ear_target'][0])
-            target_454_y = int(self.alignment_info['left_ear_target'][1])
-            
-            cv2.circle(image, (target_234_x, target_234_y), 10, (255, 0, 0), -1)  # 青色: 目標234
-            cv2.circle(image, (target_454_x, target_454_y), 10, (255, 0, 0), -1)  # 青色: 目標454
-            # cv2.putText(image, "Ear4(target)", (target_234_x + 12, target_234_y - 12), 
-            #            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
-            # cv2.putText(image, "Ear5(target)", (target_454_x + 12, target_454_y - 12), 
-            #            cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
-            
-            # 線で結ぶ
-            cv2.line(image, (original_234_x, original_234_y), (target_234_x, target_234_y), 
-                    (0, 255, 255), 3)  # 黄色の線
-            cv2.line(image, (original_454_x, original_454_y), (target_454_x, target_454_y), 
-                    (0, 255, 255), 3)  # 黄色の線
-    
-    #
-    # Face Landmarker検出結果を画像上に描画する関数
-    #
-    def draw_face_landmarker(self, image):
-        """
-        Face Landmarkerの検出結果を描画（複数の描画モード対応）
-        """
-        if (hasattr(self, 'face_landmarker_results') and 
-            self.face_landmarker_results and 
-            hasattr(self.face_landmarker_results, 'face_landmarks') and
-            self.face_landmarker_results.face_landmarks):
-            
-            # 描画モード3（OFF）の場合は何も描画しない
-            if self.face_landmarker_draw_mode == 3:
-                return
-            
-            for face_landmarks in self.face_landmarker_results.face_landmarks:
-                # MediaPipe形式のランドマークデータを作成（線・メッシュ描画用）
-                if self.face_landmarker_draw_mode == 1:
-                    # FaceMeshのような線とメッシュを描画
-                    # MediaPipeのランドマークデータ形式に変換
-                    landmark_list = []
-                    for landmark in face_landmarks:
-                        landmark_list.append([landmark.x, landmark.y, landmark.z])
-                    
-                    # 線とメッシュを描画（FaceMeshと同様）
-                    # Face Landmarkerの場合、468点のランドマークがある
-                    connections = mp.solutions.face_mesh.FACEMESH_TESSELATION
-                    
-                    # 接続線を描画
-                    for connection in connections:
-                        start_idx, end_idx = connection
-                        if start_idx < len(face_landmarks) and end_idx < len(face_landmarks):
-                            start_point = face_landmarks[start_idx]
-                            end_point = face_landmarks[end_idx]
-                            
-                            start_x = int(start_point.x * self.width)
-                            start_y = int(start_point.y * self.height)
-                            end_x = int(end_point.x * self.width)
-                            end_y = int(end_point.y * self.height)
-                            
-                            cv2.line(image, (start_x, start_y), (end_x, end_y), 
-                                    self.face_landmarker_drawing_spec.color, 1)
-                
-                # 点の描画（モード0, 1, 2で実行）
-                if self.face_landmarker_draw_mode in [0, 1, 2]:
-                    for idx, landmark in enumerate(face_landmarks):
-                        # 正規化座標をピクセル座標に変換
-                        x = int(landmark.x * self.width)
-                        y = int(landmark.y * self.height)
-                        
-                        # 円の半径を決定（線とメッシュモードでは半分のサイズ）
-                        circle_radius = self.face_landmarker_drawing_spec.circle_radius
-                        if self.face_landmarker_draw_mode == 1:  # 線とメッシュモード
-                            circle_radius = max(1, circle_radius // 2)  # 半分のサイズ（最小1）
-                        
-                        # ランドマークを円で描画（マゼンタ色）
-                        cv2.circle(image, (x, y), 
-                                   circle_radius, 
-                                   self.face_landmarker_drawing_spec.color, 
-                                   self.face_landmarker_drawing_spec.thickness)
-                        
-                        # ランドマーク番号を表示（モード2の場合）
-                        if self.face_landmarker_draw_mode == 2:
-                            if idx % 20 == 0:  # 20個おきに番号を表示（見やすくするため）
-                                cv2.putText(image, str(idx), (x + 5, y - 5), 
-                                           cv2.FONT_HERSHEY_SIMPLEX, 0.3, (255, 0, 255), 1)
-            
-            # 描画モード名を表示
-            mode_names = ["Points", "Mesh", "Points+Numbers", "OFF"]
-            mode_name = mode_names[self.face_landmarker_draw_mode]
-            face_count = len(self.face_landmarker_results.face_landmarks)
-            cv2.putText(image, f"Face Landmarker ({mode_name}): {face_count} face(s)", 
-                       (10, self.height - 60), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 255), 2)
-        else:
-            # Face Landmarkerが無効または検出結果がない場合
-            cv2.putText(image, "Face Landmarker: No faces detected", 
-                       (10, self.height - 60), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (128, 128, 128), 2)
-    
-    #
-    # 耳の位置からモデルのスケールを計算する関数
-    #
-    def calculate_model_scale_from_ears(self):
-        """
-        FaceDetectionの耳の位置(キーポイント4,5)に
-        FaceMeshのランドマーク234,454が完全に重なるようにスケールを計算
-        """
-        if not self.use_facedetector or not hasattr(self, 'face_detection'):
-            return 1.0
-        
-        if not self.face_detection.detections:
-            return 1.0
-        
-        try:
-            # FaceDetectionのキーポイントから耳の位置を取得
-            detection = self.face_detection.detections[0]
-            keypoints = detection.location_data.relative_keypoints
-            
-            # MediaPipe FaceDetectionのキーポイント:
-            # 0: 右目, 1: 左目, 2: 鼻先, 3: 口, 4: 右耳, 5: 左耳
-            if len(keypoints) >= 6 and self.face_mesh.multi_face_landmarks:
-                right_ear_fd = keypoints[4]  # FaceDetectionの右耳
-                left_ear_fd = keypoints[5]   # FaceDetectionの左耳
-                
-                # FaceMeshのランドマーク取得
-                landmarks = self.face_mesh.multi_face_landmarks[0]
-                # ランドマーク234: 顔の右端（右耳付近）
-                # ランドマーク454: 顔の左端（左耳付近）
-                right_face_fm = landmarks.landmark[234]
-                left_face_fm = landmarks.landmark[454]
 
-                # FaceDetectionの耳の間の距離（正規化座標）
-                ear_distance_fd = abs(left_ear_fd.x - right_ear_fd.x)
-                
-                # FaceMeshのランドマーク234-454の間の距離（正規化座標）
-                face_width_fm = abs(left_face_fm.x - right_face_fm.x)
-                
-                if face_width_fm > 0:
-                    # 水平方向のスケール係数
-                    # FaceMeshの234-454がFaceDetectionの耳の位置に重なるように
-                    scale_factor = ear_distance_fd / face_width_fm
-                    
-                    # スケール係数が極端にならないように制限
-                    scale_factor = max(0.3, min(scale_factor, 3.0))
-                    
-                    # print(f"自動スケール: {scale_factor:.2f}")
-                    
-                    return scale_factor
-        except Exception as e:
-            print(f"スケール計算エラー: {e}")
-        
-        return 1.0
     
-    #
-    # ランドマーク234と454を耳の位置に合わせる調整情報を計算する関数
-    #
-    def calculate_landmark_alignment(self):
-        """
-        FaceDetectionの耳の位置(キーポイント4,5)に
-        FaceMeshのランドマーク234,454が重なるように調整情報を計算
-        """
-        if not self.use_facedetector or not hasattr(self, 'face_detection'):
-            return None
-        
-        if not self.face_detection.detections:
-            return None
-        
-        try:
-            # FaceDetectionのキーポイントから耳の位置を取得
-            detection = self.face_detection.detections[0]
-            keypoints = detection.location_data.relative_keypoints
-            
-            # MediaPipe FaceDetectionのキーポイント:
-            # 0: 右目, 1: 左目, 2: 鼻先, 3: 口, 4: 右耳, 5: 左耳
-            if len(keypoints) >= 6 and self.face_mesh.multi_face_landmarks:
-                right_ear_fd = keypoints[4]  # FaceDetectionの右耳
-                left_ear_fd = keypoints[5]   # FaceDetectionの左耳
-                
-                # FaceMeshのランドマーク取得
-                landmarks = self.face_mesh.multi_face_landmarks[0]
-                # ランドマーク234: 顔の右端（右耳付近）
-                # ランドマーク454: 顔の左端（左耳付近）
-                right_face_fm = landmarks.landmark[234]
-                left_face_fm = landmarks.landmark[454]
-                
-                # ピクセル座標に変換
-                right_ear_fd_px = (right_ear_fd.x * self.width, right_ear_fd.y * self.height)
-                left_ear_fd_px = (left_ear_fd.x * self.width, left_ear_fd.y * self.height)
-                right_face_fm_px = (right_face_fm.x * self.width, right_face_fm.y * self.height)
-                left_face_fm_px = (left_face_fm.x * self.width, left_face_fm.y * self.height)
-                
-                # 距離を計算
-                # offset_234_x = right_ear_fd_px[0] - right_face_fm_px[0]
-                # offset_234_y = right_ear_fd_px[1] - right_face_fm_px[1]
-                # offset_454_x = left_ear_fd_px[0] - left_face_fm_px[0]
-                # offset_454_y = left_ear_fd_px[1] - left_face_fm_px[1]
-                
-                alignment_info = {
-                    'right_ear_target': right_ear_fd_px,
-                    'left_ear_target': left_ear_fd_px,
-                    'right_face_current': right_face_fm_px,
-                    'left_face_current': left_face_fm_px
-                }
-                
-                # print(f"========== ランドマーク位置調整デバッグ情報 ==========")
-                # print(f"FaceMesh 234 (元): ({right_face_fm_px[0]:.1f}, {right_face_fm_px[1]:.1f})")
-                # print(f"FaceDetection 耳4 (目標): ({right_ear_fd_px[0]:.1f}, {right_ear_fd_px[1]:.1f})")
-                # print(f"オフセット234: X={offset_234_x:.1f}px, Y={offset_234_y:.1f}px")
-                # print(f"")
-                # print(f"FaceMesh 454 (元): ({left_face_fm_px[0]:.1f}, {left_face_fm_px[1]:.1f})")
-                # print(f"FaceDetection 耳5 (目標): ({left_ear_fd_px[0]:.1f}, {left_ear_fd_px[1]:.1f})")
-                # print(f"オフセット454: X={offset_454_x:.1f}px, Y={offset_454_y:.1f}px")
-                # print(f"===================================================")
-                
-                return alignment_info
-        except Exception as e:
-            print(f"ランドマーク位置調整計算エラー: {e}")
-        
-        return None
+
+
+    
+
         
     #
     # キー関数
@@ -884,11 +439,6 @@ class Application:
             else:
                 # 画像を保存する関数を実行
                 self.save_image()
-                # ランドマークを保存する関数を実行
-                # self.save_landmarks()
-                # 回転行列、並進ベクトルを保存するフラッグを立てる
-                #self.flag_save_matrix = 0
-                # 画像カウントを+1する
                 self.count_img += 1
 
         
@@ -918,64 +468,6 @@ class Application:
             else:
                 pass
         
-        # FでFace Detector機能のON/OFF切り替え (コメントアウト)
-        # if action == glfw.PRESS and key == glfw.KEY_F:
-        #     self.use_facedetector = not self.use_facedetector
-        #     if self.use_facedetector:
-        #         # Face Detector機能を有効化
-        #         if not hasattr(self, 'face_detector_solution'):
-        #             self.face_detector_solution = mp.solutions.face_detection.FaceDetection(
-        #                 model_selection=0, 
-        #                 min_detection_confidence=0.5)
-        #             self.detector_drawing_spec = mp.solutions.drawing_utils.DrawingSpec(
-        #                 thickness = 2, 
-        #                 circle_radius = 2, 
-        #                 color = (0, 255, 0))
-        #         print("Face Detector機能を有効化しました")
-        #     else:
-        #         print("Face Detector機能を無効化しました")
-        
-        # Aでモデル自動スケーリングのON/OFF切り替え (コメントアウト)
-        # if action == glfw.PRESS and key == glfw.KEY_A:
-        #     if not self.use_facedetector:
-        #         print("Face Detector機能を有効化してください（Fキー）")
-        #     else:
-        #         self.auto_scale_model = not self.auto_scale_model
-        #         if self.auto_scale_model:
-        #             print("モデル自動スケーリングを有効化しました")
-        #         else:
-        #             self.model_scale_factor = 1.0
-        #             print("モデル自動スケーリングを無効化しました")
-        
-        # Dでランドマーク位置調整のON/OFF切り替え (コメントアウト)
-        # if action == glfw.PRESS and key == glfw.KEY_D:
-        #     if not self.use_facedetector:
-        #         print("Face Detector機能を有効化してください（Fキー）")
-        #     else:
-        #         self.adjust_landmarks = not self.adjust_landmarks
-        #         if self.adjust_landmarks:
-        #             print("ランドマーク位置調整を有効化しました（ランドマーク234,454を耳の位置に合わせます）")
-        #         else:
-        #             self.alignment_info = None
-        #             print("ランドマーク位置調整を無効化しました")
-        
-        # MでFaceMesh描画のON/OFF切り替え
-        if action == glfw.PRESS and key == glfw.KEY_M:
-            self.draw_landmark = not self.draw_landmark
-            if self.draw_landmark:
-                print("FaceMesh描画を有効化しました")
-            else:
-                print("FaceMesh描画を無効化しました")
-        
-        # LでFace Landmarker機能のON/OFF切り替え (コメントアウト)
-        # if action == glfw.PRESS and key == glfw.KEY_L:
-        #     self.use_face_landmarker = not self.use_face_landmarker
-        #     # ... (Face Landmarker関連の処理をすべてコメントアウト)
-        
-        # Cで比較モードのON/OFF切り替え (コメントアウト)
-        # if action == glfw.PRESS and key == glfw.KEY_C:
-        #     # ... (比較モード関連の処理をすべてコメントアウト)
-        
         # Tでステータス表示モードの切り替え
         if action == glfw.PRESS and key == glfw.KEY_T:
             if not hasattr(self, 'status_display_mode'):
@@ -989,10 +481,6 @@ class Application:
             if self.status_display_mode == 2:
                 self.print_status_to_console()
         
-        # BでFace Landmarker直接姿勢推定のON/OFF切り替え (コメントアウト)
-        # if action == glfw.PRESS and key == glfw.KEY_B:
-        #     # ... (直接姿勢推定関連の処理をすべてコメントアウト)
-        
         # Nでモデル描画のON/OFF切り替え
         if action == glfw.PRESS and key == glfw.KEY_N:
             self.draw_model_flag = not self.draw_model_flag
@@ -1001,17 +489,6 @@ class Application:
             else:
                 print("モデル描画を無効化しました")
         
-        # VでFace Landmarker描画モードの切り替え (コメントアウト)
-        # if action == glfw.PRESS and key == glfw.KEY_V:
-        #     # ... (Face Landmarker描画モード関連の処理をすべてコメントアウト)
-        
-        # GでFace Landmarker PnP姿勢推定のON/OFF切り替え (コメントアウト)
-        # if action == glfw.PRESS and key == glfw.KEY_G:
-        #     # ... (Face Landmarker PnP関連の処理をすべてコメントアウト)
-        
-        # 1-9キーでFace Landmarkerスケール調整 (コメントアウト)
-        # if action == glfw.PRESS:
-        #     # ... (スケール調整関連の処理をすべてコメントアウト)
 
     #
     # モデル設定
@@ -1109,20 +586,6 @@ class Application:
             # 顔のオイラー角を計算
             # PoseEstimationクラスのcompute_head_angleメソッドを実行
             angle = self.estimator.compute_head_angle(R, t)
-            # # 行列の値をファイルに保存
-            # if self.flag_save_matrix == 1:
-            #     today = str(datetime.date.today()).replace('-','')
-            #     filename = 'output/images/matrix_{}_{}.dat'.format(today, self.count_img)
-            #     output = open(filename, mode='a')
-            #     output.write(str(np.linalg.norm(r)))
-            #     output.write(",")
-            #     output.write(str(np.linalg.norm(t)))
-            #     output.write(",")
-            #     output.write(str(vector))
-            #     output.write(",")
-            #     output.write(str(angle))
-            #     output.write("\n")
-            #     output.close()
             return success, vector, angle
             
         else:
@@ -1221,127 +684,7 @@ class Application:
         
         return pnp_success, pnp_vector, pnp_angle
     
-    #
-    # Face LandmarkerランドマークによるPnP姿勢推定関数
-    #
-    # def compute_pose_from_face_landmarker_pnp(self):
-    #     """
-    #     Face Landmarkerのランドマークを使用してPnP問題を解決し姿勢推定
-    #     """
-    #     try:
-    #         if (not self.face_landmarker_results or 
-    #             not hasattr(self.face_landmarker_results, 'face_landmarks') or
-    #             not self.face_landmarker_results.face_landmarks):
-    #             return False, None, None
-            
-    #         # Face Landmarkerのランドマークを取得
-    #         face_landmarks = self.face_landmarker_results.face_landmarks[0]
-            
-    #         # 2D座標の抽出（Face Landmarkerのランドマーク）
-    #         point_2D = []
-    #         point_3D = []
-            
-    #         # 対応点を指定（顔全体を用いる場合は0）
-    #         if self.detect_stable == 0:
-    #             point_list = self.point_list
-    #             point_3D = self.point_3D
-    #         elif self.detect_stable == 1:
-    #             point_list = self.point_list1
-    #             point_3D = self.point_3D1
-    #         elif self.detect_stable == 2:
-    #             point_list = self.point_list2
-    #             point_3D = self.point_3D2
-    #         else:
-    #             point_list = self.point_list
-    #             point_3D = self.point_3D
-            
-    #         # Face Landmarkerのランドマークから対応点を抽出
-    #         for idx in point_list:
-    #             if idx < len(face_landmarks):
-    #                 landmark = face_landmarks[idx]
-    #                 # 正規化座標をピクセル座標に変換
-    #                 x = landmark.x * self.width
-    #                 y = landmark.y * self.height
-    #                 point_2D.append([x, y])
-            
-    #         # PnP問題を解決してカメラ姿勢を推定
-    #         if len(point_2D) >= 6:  # 最低6点必要
-    #             point_2D = np.array(point_2D, dtype=np.float32)
-    #             point_3D = np.array(point_3D, dtype=np.float32)
-                
-    #             success, R, t, r = self.estimator.compute_camera_pose(
-    #                 point_3D, point_2D, use_objpoint=True)
-                
-    #             if success:
-    #                 # モデルビュー行列を生成
-    #                 self.generate_modelview(R, t)
-                    
-    #                 # 顔の方向ベクトルを計算
-    #                 vector = self.estimator.compute_head_vector()
-                    
-    #                 # 顔のオイラー角を計算
-    #                 angle = self.estimator.compute_head_angle(R, t)
-                    
-    #                 return True, vector, angle
-    #             else:
-    #                 return False, None, None
-    #         else:
-    #             print(f"Face Landmarker PnP: 対応点が不足しています ({len(point_2D)}/6)")
-    #             return False, None, None
-                
-    #     except Exception as e:
-    #         print(f"Face Landmarker PnP姿勢推定エラー: {e}")
-    #         return False, None, None
-    
-    # #
-    # # Face Landmarkerから直接姿勢を推定する関数
-    # #
-    # def compute_pose_from_face_landmarker(self):
-    #     """
-    #     Face Landmarkerの変換行列から直接姿勢を推定
-    #     """
-    #     try:
-    #         if (not self.face_landmarker_results or 
-    #             not hasattr(self.face_landmarker_results, 'facial_transformation_matrixes') or
-    #             not self.face_landmarker_results.facial_transformation_matrixes):
-    #             return False, None, None
-            
-    #         # 変換行列を取得
-    #         transformation_matrix = np.array(
-    #             self.face_landmarker_results.facial_transformation_matrixes[0]
-    #         ).reshape(4, 4)
-            
-    #         # 回転行列と並進ベクトルを抽出
-    #         R = transformation_matrix[:3, :3]
-    #         t = transformation_matrix[:3, 3]
-            
-    #         # スケール係数を更新（変換行列の大きさから推定）
-    #         # 手動調整がされていない場合のみ自動推定
-    #         scale_estimate = np.linalg.norm(t)
-    #         if scale_estimate > 0 and (not hasattr(self, 'manual_scale_set') or not self.manual_scale_set):
-    #             self.face_landmarker_scale = scale_estimate
-            
-    #         # 手動スケール調整が有効な場合でも、並進ベクトル（位置）は変更しない
-    #         # スケールはモデル描画時のみ適用される
-            
-    #         # モデルビュー行列を生成
-    #         self.generate_modelview(R, t)
-            
-    #         # 顔の方向ベクトルを計算
-    #         vector = self.estimator.compute_head_vector()
-            
-    #         # 顔のオイラー角を計算
-    #         angle = self.estimator.compute_head_angle(R, t)
-            
-    #         return True, vector, angle
-            
-    #     except Exception as e:
-    #         print(f"Face Landmarker姿勢推定エラー: {e}")
-    #         return False, None, None
-    
-    #
-    # コンソールに状態を出力する関数
-    #
+
     def print_status_to_console(self):
         """
         現在の状態をコンソールに詳細出力
@@ -1352,23 +695,8 @@ class Application:
         print("=" * 50)
         print("          MediaPipe AR システム状態")
         print("=" * 50)
-        print(f"FaceMesh描画 [M]:         {'ON' if self.draw_landmark else 'OFF'}")
-        # print(f"Face Detector機能 [F]:    {'ON' if self.use_facedetector else 'OFF'}")
-        # print(f"Face Landmarker機能 [L]:  {'ON' if self.use_face_landmarker else 'OFF'}")
-        # if self.use_face_landmarker:
-        #     mode_names = ["点のみ", "線とメッシュ", "点+番号", "OFF"]
-        #     print(f"FL描画モード [V]:         {mode_names[self.face_landmarker_draw_mode]}")
-        # print(f"位置調整機能 [D]:         {'ON' if self.adjust_landmarks else 'OFF'}")
-        # print(f"自動スケール機能 [A]:     {'ON' if self.auto_scale_model else 'OFF'}")
-        # print(f"姿勢比較モード [C]:       {'ON' if self.comparison_mode else 'OFF'}")
-        # print(f"Face Landmarker直接姿勢推定 [B]: {'ON' if hasattr(self, 'use_direct_pose') and self.use_direct_pose else 'OFF'}")
-        # print(f"Face Landmarker PnP姿勢推定 [G]: {'ON' if hasattr(self, 'use_face_landmarker_pnp') and self.use_face_landmarker_pnp else 'OFF'}")
         print(f"モデル描画 [N]:           {'ON' if self.draw_model_flag else 'OFF'}")
         
-        # Face Landmarkerスケール情報 (コメントアウト)
-        # if self.use_face_landmarker:
-        #     scale_mode = "手動調整" if hasattr(self, 'manual_scale_set') and self.manual_scale_set else "自動調整"
-        #     print(f"Face Landmarkerスケール [1-9,0]: {self.face_landmarker_scale:.2f} ({scale_mode})")
         
         point_mode_names = {0: "全点", 1: "上部", 2: "選択"}
         point_mode = point_mode_names.get(self.detect_stable, "不明")
@@ -1377,12 +705,8 @@ class Application:
         print("-" * 50)
         print("キー操作:")
         print("  [Q] 終了    [S] 画像保存    [R] 録画")
-        print("  [M] FaceMesh    [N] モデル描画    [P] 対応点モード")
+        print("  [N] モデル描画    [P] 対応点モード")
         print("  [T] 表示モード切替")
-        # print("  [F] Face Detector    [L] Face Landmarker")
-        # print("  [V] FL描画モード    [A] 自動スケール    [D] 位置調整")
-        # print("  [C] 姿勢比較    [B] FL直接姿勢推定    [G] FL PnP姿勢推定")
-        # print("  [1-9] FLスケール調整    [0] FLスケール自動に戻す")
         print("=" * 50)
         
         if self.status_display_mode == 2:
@@ -1483,22 +807,6 @@ class Application:
         """
         # ONになっている機能のみを表示
         active_features = []
-        if self.draw_landmark:
-            active_features.append("FaceMesh")
-        # if self.use_facedetector:
-        #     active_features.append("Face Detector")
-        # if self.use_face_landmarker:
-        #     active_features.append("Face Landmarker")
-        # if self.comparison_mode:
-        #     active_features.append("Pose Comparison")
-        # if hasattr(self, 'use_direct_pose') and self.use_direct_pose:
-        #     active_features.append("FL Direct Pose")
-        # if hasattr(self, 'use_face_landmarker_pnp') and self.use_face_landmarker_pnp:
-        #     active_features.append("FL PnP Pose")
-        # if self.auto_scale_model:
-        #     active_features.append("Auto Scale")
-        # if self.adjust_landmarks:
-        #     active_features.append("Position Adjust")
         if self.draw_model_flag:
             active_features.append("Model Draw")
         
@@ -1536,84 +844,12 @@ class Application:
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 255), 2)
         y_offset += line_height
         
-        # FaceMesh描画の状態 (Mキー)
-        mesh_status = "ON" if self.draw_landmark else "OFF"
-        mesh_color = (0, 255, 0) if self.draw_landmark else (128, 128, 128)
-        cv2.putText(image, f"[M] FaceMesh Draw: {mesh_status}", (text_x, y_offset),
-                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, mesh_color, 1)
-        y_offset += line_height
-        
-        # Face Detector機能の状態 (Fキー) - コメントアウト
-        # face_detector_status = "ON" if self.use_facedetector else "OFF"
-        # face_detector_color = (0, 255, 0) if self.use_facedetector else (128, 128, 128)
-        # cv2.putText(image, f"[F] Face Detector: {face_detector_status}", (text_x, y_offset),
-        #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, face_detector_color, 1)
-        # y_offset += line_height
-        
-        # Face Landmarker機能の状態 (Lキー) - コメントアウト
-        # face_landmarker_status = "ON" if self.use_face_landmarker else "OFF"
-        # face_landmarker_color = (0, 255, 0) if self.use_face_landmarker else (128, 128, 128)
-        # cv2.putText(image, f"[L] Face Landmarker: {face_landmarker_status}", (text_x, y_offset),
-        #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, face_landmarker_color, 1)
-        # y_offset += line_height
-        
-        # Face Landmarker描画モード (Vキー) - コメントアウト
-        # if self.use_face_landmarker:
-        #     mode_names = ["Points", "Mesh", "Points+Num", "OFF"]
-        #     mode_name = mode_names[self.face_landmarker_draw_mode]
-        #     cv2.putText(image, f"[V] FL Draw Mode: {mode_name}", (text_x, y_offset),
-        #                cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 255), 1)
-        #     y_offset += line_height
-        
-        # 比較モードの状態 (Cキー) - コメントアウト
-        # comparison_status = "ON" if self.comparison_mode else "OFF"
-        # comparison_color = (0, 255, 0) if self.comparison_mode else (128, 128, 128)
-        # cv2.putText(image, f"[C] Pose Comparison: {comparison_status}", (text_x, y_offset),
-        #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, comparison_color, 1)
-        # y_offset += line_height
-        
-        # Face Landmarker直接姿勢推定の状態 (Bキー) - コメントアウト
-        # direct_pose_status = "ON" if hasattr(self, 'use_direct_pose') and self.use_direct_pose else "OFF"
-        # direct_pose_color = (0, 255, 0) if hasattr(self, 'use_direct_pose') and self.use_direct_pose else (128, 128, 128)
-        # cv2.putText(image, f"[B] FL Direct Pose: {direct_pose_status}", (text_x, y_offset),
-        #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, direct_pose_color, 1)
-        # y_offset += line_height
-        
-        # Face Landmarker PnP姿勢推定の状態 (Gキー) - コメントアウト
-        # fl_pnp_status = "ON" if hasattr(self, 'use_face_landmarker_pnp') and self.use_face_landmarker_pnp else "OFF"
-        # fl_pnp_color = (0, 255, 0) if hasattr(self, 'use_face_landmarker_pnp') and self.use_face_landmarker_pnp else (128, 128, 128)
-        # cv2.putText(image, f"[G] FL PnP Pose: {fl_pnp_status}", (text_x, y_offset),
-        #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, fl_pnp_color, 1)
-        # y_offset += line_height
-        
         # モデル描画の状態 (Nキー)
         model_draw_status = "ON" if self.draw_model_flag else "OFF"
         model_draw_color = (0, 255, 0) if self.draw_model_flag else (128, 128, 128)
         cv2.putText(image, f"[N] Model Draw: {model_draw_status}", (text_x, y_offset),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, model_draw_color, 1)
         y_offset += line_height
-        
-        # 位置調整機能の状態 (Dキー) - コメントアウト
-        # adjust_status = "ON" if self.adjust_landmarks else "OFF"
-        # adjust_color = (0, 255, 0) if self.adjust_landmarks else (128, 128, 128)"
-        # status_text = f"[D] Position Adjust: {adjust_status}"
-        # if self.adjust_landmarks and not self.use_facedetector:
-        #     status_text += " (Need F key ON)"
-        #     adjust_color = (0, 165, 255)  # オレンジ色
-        # cv2.putText(image, status_text, (text_x, y_offset),
-        #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, adjust_color, 1)
-        # y_offset += line_height
-        
-        # 自動スケール機能の状態 (Aキー) - コメントアウト
-        # scale_status = "ON" if self.auto_scale_model else "OFF"
-        # scale_color = (0, 255, 0) if self.auto_scale_model else (128, 128, 128)
-        # status_text = f"[A] Auto Scale: {scale_status}"
-        # if self.auto_scale_model and not self.use_facedetector:
-        #     status_text += " (Need F key ON)"
-        #     scale_color = (0, 165, 255)  # オレンジ色
-        # cv2.putText(image, status_text, (text_x, y_offset),
-        #            cv2.FONT_HERSHEY_SIMPLEX, 0.5, scale_color, 1)
-        # y_offset += line_height
         
         # 対応点モード (Pキー)
         point_mode_names = {0: "All Points", 1: "Upper Points", 2: "Selected Points"}
