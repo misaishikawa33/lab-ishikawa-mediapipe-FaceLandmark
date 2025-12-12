@@ -20,7 +20,7 @@ class CreateMQO:
         # 顔下部切り取りを行うか
         self.use_cut = True
         # マスクモデル作成モード
-        self.masked_face = False
+        self.masked_face = True
         # 世界座標系を記述
         self.world_coordinate = False
         
@@ -104,7 +104,7 @@ class CreateMQO:
         self.outputs.append('Material 1 {\n')
         
         if self.masked_face == True:
-            self.outputs.append('\t"mat1" shader(3) col(0.176 1.000 0.000 0.500) dif(0.800) amb(0.600) emi(0.000) spc(0.000) power(5.00) tex("mask.jpg")\n')
+            self.outputs.append('\t"mat1" shader(3) col(0.176 1.000 0.000 0.500) dif(0.800) amb(0.600) emi(0.000) spc(0.000) power(5.00) tex("nomask.jpg")\n')
         else:
             self.outputs.append('\t"mat1" shader(3) col(0.176 1.000 0.000 0.500) dif(0.800) amb(0.600) emi(0.000) spc(0.000) power(5.00) tex("%s")\n' % texture_filename)
         self.outputs.append('}\n')
@@ -349,6 +349,7 @@ class CreateMQO:
                 else:
                     # 三次元モデルに使われるランドマーク
                     cut.append(j)
+                    
 
         # 対応点を選択
         for j in range(cnt):  
