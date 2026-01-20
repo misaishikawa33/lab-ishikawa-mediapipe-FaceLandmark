@@ -5,7 +5,7 @@ import mediapipe as mp
 import numpy as np
 
 mp_face_mesh = mp.solutions.face_mesh
-image_path = 'mqodata/test1.jpg'  # 処理する画像ファイルパス
+image_path = '/home/misa/lab/mediapipe/FaceLandmark/mqodata/nomask.jpg'  # 処理する画像ファイルパス
 image = cv2.imread(image_path)
 if image is None:
     print(f"Could not read {image_path}")

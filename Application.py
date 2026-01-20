@@ -17,9 +17,6 @@ import PoseEstimation as ps
 import USBCamera as cam
 from mqoloader.loadmqo import LoadMQO
 
-# 未使用
-# from ultralytics import YOLO
-# import insightface
 
 #
 # MRアプリケーションクラス
@@ -68,6 +65,12 @@ class Application:
         # 録画用変数
         self.use_record = False # 初期値はFalse
         self.video = None
+
+        # ランドマーク座標の手動上書き（ピクセル指定）
+        # 形式: {ランドマーク番号: (x_px, y_px)}
+        # 例: 152番のみ初期登録。その他はCSVで指定可能。
+        self.landmark_overrides_px = {152: (234, 437)}
+        self.landmark_overrides_loaded = False
 
         #
         # USBカメラの設定
@@ -171,7 +174,7 @@ class Application:
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         # 画像の読み込み
         
-        # === カメラ映像処理（リアルタイム） ===
+        # # === カメラ映像処理（リアルタイム） ===
         # success, self.image = self.camera.CaptureImage()
         # if not success:
         #     print("error : video error")
@@ -179,7 +182,7 @@ class Application:
         # # USBCameraが既にRGB変換済みのため、追加変換は不要
         # self.rgb_image_for_display = self.image.copy()
         
-        # === 静的画像処理（単一画像） ===
+        # # === 静的画像処理（単一画像） ===
         # 画像の形式の変換なリアルタイムの場合は、USBCameraクラス内で自動的にBGR→RGB変換
         static_image_path = "/home/misa/lab/mediapipe/FaceLandmark/mqodata/input/masked4_face_up.jpg"
         bgr_image = cv2.imread(static_image_path)
@@ -200,7 +203,7 @@ class Application:
         # 描画用にもRGB画像を作成（GLWindowはRGBを期待）
         self.rgb_image_for_display = self.image.copy()
 
-        ### ここまでMediaPipe処理部分 ###
+        # ### ここまでMediaPipe処理部分 ###
     
         # 描画設定
         self.image.flags.writeable = False
@@ -209,18 +212,27 @@ class Application:
         #
         self.face_mesh = self.face_mesh_solution.process(self.image)
 
-        #20251204(ishikawa) 152番のランドマークの位置を上書き変更
+        ##リアルタイル時コメントアウト開始##
+        # # 上書き座標の読込(ishikawa0119)
+        if not self.landmark_overrides_loaded:
+            self.load_landmark_overrides('mqodata/input/landmark_overrides.csv')
+            self.landmark_overrides_loaded = True
+
+        # 指定ランドマークの座標を手動上書き
         if self.face_mesh.multi_face_landmarks:
             for face_landmarks in self.face_mesh.multi_face_landmarks:
-                if len(face_landmarks.landmark) > 152:
-                    # ピクセル座標をMediaPipeの正規化座標(0.0-1.0)に変換
-                    face_landmarks.landmark[152].x = 234  / self.width
-                    face_landmarks.landmark[152].y = 437 / self.height 
+                self.apply_manual_landmark_overrides(face_landmarks)
+                
+        ##リアルタイル時コメントアウト終了##
 
-        # 変更後のランドマーク152番を描画（MediaPipeの座標から取得）
-        x = int(face_landmarks.landmark[152].x * self.width)
-        y = int(face_landmarks.landmark[152].y * self.height)
-        cv2.circle(self.rgb_image_for_display, (x, y), 5, (0, 0, 255), -1)  
+
+
+                    
+
+        # # 変更後のランドマーク152番を描画（MediaPipeの座標から取得）
+        # x = int(face_landmarks.landmark[152].x * self.width)
+        # y = int(face_landmarks.landmark[152].y * self.height)
+        # cv2.circle(self.rgb_image_for_display, (x, y), 5, (0, 0, 255), -1)  
 
 
         #
@@ -614,6 +626,57 @@ class Application:
             self.modelview[13] = t[1]
             self.modelview[14] = t[2]
             self.modelview[15] = 1.0
+
+    #
+    # ランドマーク座標の手動上書き関連
+    #
+    def load_landmark_overrides(self, csv_path):
+        """
+        CSVからランドマーク上書き座標を読み込む。
+        形式: idx,x,y（ピクセル値）。#で始まる行はコメントとして無視。
+        """
+        import os
+        if not os.path.exists(csv_path):
+            return
+        try:
+            overrides = {}
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                for line in f:
+                    line = line.strip()
+                    if not line or line.startswith('#'):
+                        continue
+                    parts = [p.strip() for p in line.split(',')]
+                    if len(parts) < 3:
+                        continue
+                    try:
+                        idx = int(parts[0])
+                        x_px = float(parts[1])
+                        y_px = float(parts[2])
+                        overrides[idx] = (x_px, y_px)
+                    except ValueError:
+                        # 数値に変換できない行はスキップ
+                        continue
+            # 既存の辞書に上書き（CSV優先）
+            self.landmark_overrides_px.update(overrides)
+            if overrides:
+                print(f"landmark_overrides.csv を読み込み: {len(overrides)}件")
+        except Exception as e:
+            print(f"ランドマーク上書きCSV読込エラー: {e}")
+
+    def apply_manual_landmark_overrides(self, face_landmarks):
+        """
+        self.landmark_overrides_px に基づき、指定ランドマークの x,y を
+        画像サイズで正規化した値に置換する。
+        """
+        try:
+            total = len(face_landmarks.landmark)
+            for idx, (x_px, y_px) in self.landmark_overrides_px.items():
+                if idx < 0 or idx >= total:
+                    continue
+                face_landmarks.landmark[idx].x = x_px / self.width
+                face_landmarks.landmark[idx].y = y_px / self.height
+        except Exception as e:
+            print(f"ランドマーク上書き適用エラー: {e}")
       
       
     #
