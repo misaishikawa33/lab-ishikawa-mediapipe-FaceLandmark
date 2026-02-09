@@ -215,7 +215,7 @@ class Application:
         ##リアルタイル時コメントアウト開始##
         # # 上書き座標の読込(ishikawa0119)
         if not self.landmark_overrides_loaded:
-            self.load_landmark_overrides('mqodata/input/landmark_overrides.csv')
+            self.load_landmark_overrides('mqodata/input/rinkaku.csv')
             self.landmark_overrides_loaded = True
 
         # 指定ランドマークの座標を手動上書き
@@ -223,16 +223,19 @@ class Application:
             for face_landmarks in self.face_mesh.multi_face_landmarks:
                 self.apply_manual_landmark_overrides(face_landmarks)
                 
-        ##リアルタイル時コメントアウト終了##
+        # # ##リアルタイル時コメントアウト終了##
 
 
 
                     
 
-        # # 変更後のランドマーク152番を描画（MediaPipeの座標から取得）
+        # 変更後のランドマーク152番を描画（MediaPipeの座標から取得）
         # x = int(face_landmarks.landmark[152].x * self.width)
         # y = int(face_landmarks.landmark[152].y * self.height)
         # cv2.circle(self.rgb_image_for_display, (x, y), 5, (0, 0, 255), -1)  
+        x = int(face_landmarks.landmark[234].x * self.width)
+        y = int(face_landmarks.landmark[234].y * self.height)
+        cv2.circle(self.rgb_image_for_display, (x, y), 5, (0, 0, 255), -1)  
 
 
         #
