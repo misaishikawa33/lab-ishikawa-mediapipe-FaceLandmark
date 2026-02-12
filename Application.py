@@ -233,9 +233,6 @@ class Application:
         # x = int(face_landmarks.landmark[152].x * self.width)
         # y = int(face_landmarks.landmark[152].y * self.height)
         # cv2.circle(self.rgb_image_for_display, (x, y), 5, (0, 0, 255), -1)  
-        x = int(face_landmarks.landmark[234].x * self.width)
-        y = int(face_landmarks.landmark[234].y * self.height)
-        cv2.circle(self.rgb_image_for_display, (x, y), 5, (0, 0, 255), -1)  
 
 
         #
