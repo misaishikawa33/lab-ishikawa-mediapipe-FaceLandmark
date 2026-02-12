@@ -68,9 +68,10 @@ class Application:
 
         # ランドマーク座標の手動上書き（ピクセル指定）
         # 形式: {ランドマーク番号: (x_px, y_px)}
-        # 例: 152番のみ初期登録。その他はCSVで指定可能。
-        self.landmark_overrides_px = {152: (234, 437)}
+        self.landmark_overrides_px = {}
         self.landmark_overrides_loaded = False
+        self.rinkaku_yolo_csv_path = 'mqodata/input/masked4_face_up_inst00_rinkaku.csv'
+        self.rinkaku_target_landmarks = [116, 123, 187, 207, 192, 214, 170, 176, 148, 152]
 
         #
         # USBカメラの設定
@@ -213,9 +214,12 @@ class Application:
         self.face_mesh = self.face_mesh_solution.process(self.image)
 
         ##リアルタイル時コメントアウト開始##
-        # # 上書き座標の読込(ishikawa0119)
+        # # 上書き座標の生成(ishikawa0119)
         if not self.landmark_overrides_loaded:
-            self.load_landmark_overrides('mqodata/input/rinkaku.csv')
+            self.build_landmark_overrides_from_yolo_csv(
+                self.rinkaku_yolo_csv_path,
+                self.rinkaku_target_landmarks
+            )
             self.landmark_overrides_loaded = True
 
         # 指定ランドマークの座標を手動上書き
@@ -662,6 +666,92 @@ class Application:
                 print(f"landmark_overrides.csv を読み込み: {len(overrides)}件")
         except Exception as e:
             print(f"ランドマーク上書きCSV読込エラー: {e}")
+
+    def build_landmark_overrides_from_yolo_csv(self, csv_path, target_landmarks):
+        """
+        YOLO出力の輪郭CSVから等間隔点を計算して上書き座標を生成する。
+        """
+        import csv
+        import os
+
+        if not os.path.exists(csv_path):
+            print(f"YOLO輪郭CSVが見つかりません: {csv_path}")
+            return False
+
+        points = []
+        try:
+            with open(csv_path, 'r', encoding='utf-8') as f:
+                reader = csv.DictReader(f)
+                fieldnames = reader.fieldnames or []
+                has_xy_jp = 'x座標' in fieldnames and 'y座標' in fieldnames
+                has_xy_en = 'x' in fieldnames and 'y' in fieldnames
+
+                for row in reader:
+                    try:
+                        if has_xy_jp:
+                            x_val = row.get('x座標', '').strip()
+                            y_val = row.get('y座標', '').strip()
+                        elif has_xy_en:
+                            x_val = row.get('x', '').strip()
+                            y_val = row.get('y', '').strip()
+                        elif len(fieldnames) >= 3:
+                            x_val = row.get(fieldnames[1], '').strip()
+                            y_val = row.get(fieldnames[2], '').strip()
+                        else:
+                            values = list(row.values())
+                            if len(values) < 2:
+                                continue
+                            x_val = str(values[0]).strip()
+                            y_val = str(values[1]).strip()
+
+                        x = float(x_val)
+                        y = float(y_val)
+                        points.append((x, y))
+                    except ValueError:
+                        continue
+        except Exception as e:
+            print(f"YOLO輪郭CSV読込エラー: {e}")
+            return False
+
+        if len(points) < 2 or not target_landmarks:
+            print("YOLO輪郭CSVの点数が不足しています")
+            return False
+
+        distances = [0.0]
+        for i in range(1, len(points)):
+            dx = points[i][0] - points[i - 1][0]
+            dy = points[i][1] - points[i - 1][1]
+            distances.append(distances[-1] + np.sqrt(dx * dx + dy * dy))
+
+        total_distance = distances[-1]
+        if total_distance <= 0:
+            print("YOLO輪郭CSVの総距離が0です")
+            return False
+
+        target_count = len(target_landmarks)
+        overrides = {}
+        for idx, landmark_id in enumerate(target_landmarks):
+            if target_count > 1:
+                target_distance = (idx / (target_count - 1)) * total_distance
+            else:
+                target_distance = 0.0
+
+            for i in range(len(distances) - 1):
+                if distances[i] <= target_distance <= distances[i + 1]:
+                    segment = distances[i + 1] - distances[i]
+                    ratio = 0.0 if segment <= 0 else (target_distance - distances[i]) / segment
+                    x_interp = points[i][0] + ratio * (points[i + 1][0] - points[i][0])
+                    y_interp = points[i][1] + ratio * (points[i + 1][1] - points[i][1])
+                    overrides[landmark_id] = (x_interp, y_interp)
+                    break
+
+        if overrides:
+            self.landmark_overrides_px.update(overrides)
+            print(f"YOLO輪郭CSVから上書き座標を生成: {len(overrides)}件")
+            return True
+
+        print("上書き座標の生成に失敗しました")
+        return False
 
     def apply_manual_landmark_overrides(self, face_landmarks):
         """
