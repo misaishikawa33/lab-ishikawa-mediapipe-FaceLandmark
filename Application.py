@@ -185,7 +185,7 @@ class Application:
         
         # # === 静的画像処理（単一画像） ===
         # 画像の形式の変換なリアルタイムの場合は、USBCameraクラス内で自動的にBGR→RGB変換
-        static_image_path = "/home/misa/lab/mediapipe/FaceLandmark/mqodata/input/masked4_face_up.jpg"
+        static_image_path = "/home/misa/lab/mediapipe/FaceLandmark/mqodata/input/maskpic/face1.jpg"
         bgr_image = cv2.imread(static_image_path)
         success = bgr_image is not None
 
@@ -213,21 +213,25 @@ class Application:
         #
         self.face_mesh = self.face_mesh_solution.process(self.image)
 
-        ##リアルタイル時コメントアウト開始##
-        # # 上書き座標の生成(ishikawa0119)
-        if not self.landmark_overrides_loaded:
-            self.build_landmark_overrides_from_yolo_csv(
-                self.rinkaku_yolo_csv_path,
-                self.rinkaku_target_landmarks
-            )
-            self.landmark_overrides_loaded = True
 
-        # 指定ランドマークの座標を手動上書き
-        if self.face_mesh.multi_face_landmarks:
-            for face_landmarks in self.face_mesh.multi_face_landmarks:
-                self.apply_manual_landmark_overrides(face_landmarks)
+        # # === 静的画像処理（単一画像） ===
+
+
+        # ##リアルタイル時コメントアウト開始##
+        # # # 上書き座標の生成(ishikawa0119)
+        # if not self.landmark_overrides_loaded:
+        #     self.build_landmark_overrides_from_yolo_csv(
+        #         self.rinkaku_yolo_csv_path,
+        #         self.rinkaku_target_landmarks
+        #     )
+        #     self.landmark_overrides_loaded = True
+
+        # # 指定ランドマークの座標を手動上書き
+        # if self.face_mesh.multi_face_landmarks:
+        #     for face_landmarks in self.face_mesh.multi_face_landmarks:
+        #         self.apply_manual_landmark_overrides(face_landmarks)
                 
-        # # ##リアルタイル時コメントアウト終了##
+        # # # ##リアルタイル時コメントアウト終了##
 
 
 
