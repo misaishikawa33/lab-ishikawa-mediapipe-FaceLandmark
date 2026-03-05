@@ -38,6 +38,9 @@ class Application:
         self.count_img = 0
         self.count_rec = 0
         self.count_func = 0
+        
+        # 画像保存フラグ
+        self.save_image_flag = False
 
         # 顔検出に用いる対応点に関する変数(顔全体の場合0)
         self.detect_stable = 0
@@ -333,13 +336,18 @@ class Application:
         # 関数実行回数を更新
         self.count_func += 1
         
-        # バッファを入れ替えて画面を更新
-        glfw.swap_buffers(window)
-            
+        # 画像保存フラグがTrueの場合、バッファスワップ前に保存
+        if self.save_image_flag:
+            self.save_image()
+            self.save_image_flag = False
+        
         # 録画している場合画面を保存
         if self.use_record:
-            frame = self.save_image()
+            frame = self.save_image_for_recording()
             self.video.write(frame)
+        
+        # バッファを入れ替えて画面を更新
+        glfw.swap_buffers(window)
 
     #
     # モデル描画に関する処理を行う関数
@@ -457,9 +465,8 @@ class Application:
             if self.use_record:
                 print("録画実行中です...録画を終了してから画像の保存を実行できます")
             else:
-                # 画像を保存する関数を実行
-                self.save_image()
-                self.count_img += 1
+                # 画像保存フラグを立てる（次のdisplay_funcで保存される）
+                self.save_image_flag = True
 
         
         # Rで画面録画開始
@@ -535,20 +542,32 @@ class Application:
     #
     def save_image(self):
         today = str(datetime.date.today()).replace('-','')
-        filename = 'output/images/image_{}-{}.png'.format(today, self.count_img)
+        filename = 'output/images/maskpic/image_{}-{}.png'.format(today, self.count_img)
         image = np.zeros((self.height, self.width, 3), dtype=np.uint8)
         # バッファを読み込む(画面を読み込む)
-        glReadBuffer(GL_FRONT)
-        # ピクセルを読み込む
+        glReadBuffer(GL_BACK)  # ダブルバッファリングの場合はGL_BACKを使用
+        # ピクセルを読み込む（RGBフォーマットで読み取り）
         glReadPixels(0, 0, self.width, self.height, GL_RGB, GL_UNSIGNED_BYTE, image.data)
-        image = cv2.cvtColor (image, cv2.COLOR_BGR2RGB)
-        image = cv2.flip (image, 0)
-        if self.use_record:
-            return image
-        else:
-            # 画像を保存
-            print("画像を保存します..." + filename)
-            cv2.imwrite(filename, image)
+        # OpenGLはRGB形式で読み取るので、BGR形式に変換（cv2.imwriteはBGRを期待）
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        # OpenGLは下から上に読み取るので上下反転
+        image = cv2.flip(image, 0)
+        
+        # 画像を保存
+        print("画像を保存します..." + filename)
+        cv2.imwrite(filename, image)
+        self.count_img += 1  # カウンタを増やす
+    
+    #
+    # 録画用に画像を返す関数
+    #
+    def save_image_for_recording(self):
+        image = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+        glReadBuffer(GL_BACK)
+        glReadPixels(0, 0, self.width, self.height, GL_RGB, GL_UNSIGNED_BYTE, image.data)
+        image = cv2.cvtColor(image, cv2.COLOR_RGB2BGR)
+        image = cv2.flip(image, 0)
+        return image
         
     #
     # 画面録画を保存する関数
