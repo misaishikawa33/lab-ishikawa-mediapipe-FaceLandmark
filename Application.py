@@ -188,7 +188,7 @@ class Application:
         
         # # === 静的画像処理（単一画像） ===
         # 画像の形式の変換なリアルタイムの場合は、USBCameraクラス内で自動的にBGR→RGB変換
-        static_image_path = "/home/misa/lab/mediapipe/FaceLandmark/mqodata/input/maskpic/face1.jpg"
+        static_image_path = "/home/misa/lab/mediapipe/FaceLandmark/mqodata/input/maskpic/face17.jpg"
         bgr_image = cv2.imread(static_image_path)
         success = bgr_image is not None
 
