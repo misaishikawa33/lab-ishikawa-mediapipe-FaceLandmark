@@ -76,6 +76,16 @@ class Application:
         self.rinkaku_yolo_csv_path = 'mqodata/input/masked4_face_up_inst00_rinkaku.csv'
         self.rinkaku_target_landmarks = [116, 123, 187, 207, 192, 214, 170, 176, 148, 152]
 
+        # YOLO輪郭によるリアルタイム補正
+        self.use_realtime_rinkaku_override = True
+        self.landmark_update_interval = 5  # Nフレームに1回だけYOLO推論を実行
+        self.realtime_frame_count = 0
+        self.export_rinkaku_csv = True     # デバッグ用にCSVを毎回上書き保存
+        self.yolo_model_path = 'yolofolder/best.pt'
+        self.yolo_model = None
+        self.yolo_available = False
+        self.initialize_realtime_rinkaku_model()
+
         #
         # USBカメラの設定
         # USBCameraクラスのインスタンス生成
@@ -134,30 +144,9 @@ class Application:
             thickness = 1, 
             circle_radius = 1)
         
-        #
-        # マスク着用有無の推論モデルYOLOv8(未使用)
-        # train : Yolov8, datasets : face mask dataset(Yolo format)
-        # initial_weight : yolov8n.pt , epoch : 200 , image_size : 640
-        #
         self.use_mask = False
-        # if self.use_mask:
-        #     self.mask_model = YOLO("./yolov8n/detect/train/weights/best.pt")
-        #     self.mask = False # mask未着用
-        # else:
-        #     self.mask = True # mask着用
-        
-        #
-        # 高精度顔検出モデルinsightface(未使用)
-        #
         self.use_faceanalysis = False
-        # if self.use_faceanalysis:
-        #     # load detection model
-        #     self.detector = insightface.model_zoo.get_model("models/det_10g.onnx")
-        #     self.detector.prepare(ctx_id=-1, input_size=(640, 640))
-        # else:
-        #     self.detect = False
-        
-    
+
     #
     # カメラの内部パラメータの設定関数
     # 
@@ -178,36 +167,37 @@ class Application:
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         # 画像の読み込み
         
-        # # === カメラ映像処理（リアルタイム） ===
-        # success, self.image = self.camera.CaptureImage()
-        # if not success:
-        #     print("error : video error")
-        #     return
-        # # USBCameraが既にRGB変換済みのため、追加変換は不要
-        # self.rgb_image_for_display = self.image.copy()
-        
-        # # === 静的画像処理（単一画像） ===
-        # 画像の形式の変換なリアルタイムの場合は、USBCameraクラス内で自動的にBGR→RGB変換
-        static_image_path = "/home/misa/lab/mediapipe/FaceLandmark/mqodata/input/maskpic/face17.jpg"
-        bgr_image = cv2.imread(static_image_path)
-        success = bgr_image is not None
-
+        # === カメラ映像処理（リアルタイム） ===
+        success, self.image = self.camera.CaptureImage()
         if not success:
-            print(f"error : could not load image from {static_image_path}")
+            print("error : video error")
             return
-        
-        # 画像サイズを640x480にリサイズ
-        height, width = bgr_image.shape[:2]
-        if width != 640 or height != 480:
-            bgr_image = cv2.resize(bgr_image, (640, 480))
-        
-        # MediaPipe用にRGBに変換
-        self.image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
-        
-        # 描画用にもRGB画像を作成（GLWindowはRGBを期待）
+        # USBCameraが既にRGB変換済みのため、追加変換は不要
         self.rgb_image_for_display = self.image.copy()
 
-        # ### ここまでMediaPipe処理部分 ###
+        
+        # # # === 静的画像処理（単一画像） ===
+        # # 画像の形式の変換なリアルタイムの場合は、USBCameraクラス内で自動的にBGR→RGB変換
+        # static_image_path = "/home/misa/lab/mediapipe/FaceLandmark/mqodata/input/maskpic/face17.jpg"
+        # bgr_image = cv2.imread(static_image_path)
+        # success = bgr_image is not None
+
+        # if not success:
+        #     print(f"error : could not load image from {static_image_path}")
+        #     return
+        
+        # # 画像サイズを640x480にリサイズ
+        # height, width = bgr_image.shape[:2]
+        # if width != 640 or height != 480:
+        #     bgr_image = cv2.resize(bgr_image, (640, 480))
+        
+        # # MediaPipe用にRGBに変換
+        # self.image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
+        
+        # # 描画用にもRGB画像を作成（GLWindowはRGBを期待）
+        # self.rgb_image_for_display = self.image.copy()
+
+        # ###  静的画像処理（単一画像）終了 ###
     
         # 描画設定
         self.image.flags.writeable = False
@@ -215,6 +205,30 @@ class Application:
         # 顔特徴点検出(FaceMesh)を実行
         #
         self.face_mesh = self.face_mesh_solution.process(self.image)
+
+        # フレームカウンタ更新（リアルタイム補正の間引きに使用）
+        self.realtime_frame_count += 1
+
+        # NフレームごとにYOLOを実行して、輪郭CSVと補正座標を更新する
+        if self.use_realtime_rinkaku_override:
+            should_update = (
+                not self.landmark_overrides_loaded
+                or (self.realtime_frame_count % max(1, self.landmark_update_interval) == 0)
+            )
+
+            if should_update:
+                if self.yolo_available:
+                    self.update_landmark_overrides_from_yolo(self.image)
+                elif not self.landmark_overrides_loaded:
+                    self.landmark_overrides_loaded = self.build_landmark_overrides_from_yolo_csv(
+                        self.rinkaku_yolo_csv_path,
+                        self.rinkaku_target_landmarks,
+                    )
+
+        # YOLOで更新した補正座標をMediaPipeランドマークへ反映する
+        if self.face_mesh.multi_face_landmarks and self.landmark_overrides_px:
+            for face_landmarks in self.face_mesh.multi_face_landmarks:
+                self.apply_manual_landmark_overrides(face_landmarks)
 
 
         # # === 静的画像処理（単一画像） ===
@@ -234,11 +248,7 @@ class Application:
         #     for face_landmarks in self.face_mesh.multi_face_landmarks:
         #         self.apply_manual_landmark_overrides(face_landmarks)
                 
-        # # # ##リアルタイル時コメントアウト終了##
-
-
-
-                    
+        # # # ##リアルタイル時コメントアウト終了##           
 
         # 変更後のランドマーク152番を描画（MediaPipeの座標から取得）
         # x = int(face_landmarks.landmark[152].x * self.width)
@@ -515,6 +525,15 @@ class Application:
                 print("モデル描画を有効化しました")
             else:
                 print("モデル描画を無効化しました")
+
+        # FでYOLO補正の更新間隔を切り替え
+        if action == glfw.PRESS and key == glfw.KEY_F:
+            interval_list = [1, 5, 10, 15]
+            current_idx = 0
+            if self.landmark_update_interval in interval_list:
+                current_idx = interval_list.index(self.landmark_update_interval)
+            self.landmark_update_interval = interval_list[(current_idx + 1) % len(interval_list)]
+            print(f"YOLO補正の更新間隔を {self.landmark_update_interval}フレーム/回 に変更")
         
 
     #
@@ -690,6 +709,200 @@ class Application:
         except Exception as e:
             print(f"ランドマーク上書きCSV読込エラー: {e}")
 
+    def initialize_realtime_rinkaku_model(self):
+        """
+        リアルタイム輪郭補正に使うYOLOモデルを初期化する。
+        """
+        import os
+
+        if not self.use_realtime_rinkaku_override:
+            return
+
+        if not os.path.exists(self.yolo_model_path):
+            print(f"YOLOモデルが見つかりません: {self.yolo_model_path}")
+            return
+
+        try:
+            from ultralytics import YOLO
+            self.yolo_model = YOLO(self.yolo_model_path)
+            self.yolo_available = True
+            print(f"YOLO輪郭補正を有効化: interval={self.landmark_update_interval}")
+        except Exception as e:
+            self.yolo_model = None
+            self.yolo_available = False
+            print(f"YOLO初期化に失敗しました: {e}")
+
+    def find_mask_keypoints(self, contour):
+        """
+        マスク輪郭から顎/鼻/左右端を抽出する。
+        """
+        points = []
+        for point in contour:
+            x, y = point[0][0], point[0][1]
+            points.append((x, y))
+
+        if not points:
+            return None
+
+        points_by_y = sorted(points, key=lambda p: p[1])
+        chin_point = points_by_y[-1]
+        nose_point = points_by_y[0]
+        upper_points = points_by_y[:max(1, len(points_by_y) // 5)]
+        left_point = max(upper_points, key=lambda p: p[0])
+        right_point = min(upper_points, key=lambda p: p[0])
+
+        return {
+            'chin': chin_point,
+            'nose': nose_point,
+            'left_edge': left_point,
+            'right_edge': right_point,
+            'all_points': points,
+        }
+
+    def extract_contour_between_points(self, points, chin_point, right_point):
+        """
+        右端から顎までの輪郭を抽出する。
+        """
+        chin_idx = None
+        right_idx = None
+
+        for i, p in enumerate(points):
+            if p == chin_point:
+                chin_idx = i
+            if p == right_point:
+                right_idx = i
+
+        if chin_idx is None or right_idx is None:
+            return []
+
+        if right_idx < chin_idx:
+            return points[right_idx:chin_idx + 1]
+        return points[right_idx:] + points[:chin_idx + 1]
+
+    def save_rinkaku_points_to_csv(self, points, csv_path):
+        """
+        輪郭点をCSVに保存する（毎回上書き）。
+        """
+        import csv
+        import os
+
+        try:
+            dir_path = os.path.dirname(csv_path)
+            if dir_path:
+                os.makedirs(dir_path, exist_ok=True)
+
+            with open(csv_path, 'w', newline='', encoding='utf-8') as csv_f:
+                writer = csv.writer(csv_f)
+                writer.writerow(['番号', 'x座標', 'y座標'])
+                for idx, point in enumerate(points):
+                    writer.writerow([idx, point[0], point[1]])
+        except Exception as e:
+            print(f"輪郭CSV保存エラー: {e}")
+
+    def update_landmark_overrides_from_yolo(self, bgr_image):
+        """
+        現在フレームからYOLO輪郭を抽出し、上書き座標を更新する。
+        """
+        if not self.yolo_available or self.yolo_model is None or bgr_image is None:
+            return False
+
+        # YOLO側の入力サイズをアプリ表示サイズに合わせる
+        if bgr_image.shape[1] != self.width or bgr_image.shape[0] != self.height:
+            target_image = cv2.resize(bgr_image, (self.width, self.height))
+        else:
+            target_image = bgr_image
+
+        try:
+            results = self.yolo_model(target_image, max_det=1, verbose=False)[0]
+        except Exception as e:
+            print(f"YOLO推論エラー: {e}")
+            return False
+
+        if results.masks is None:
+            return False
+
+        best_contour = None
+        best_area = 0.0
+
+        for mask in results.masks.data:
+            mask_resized = cv2.resize(mask.cpu().numpy(), (self.width, self.height))
+            mask_uint8 = (mask_resized * 255).astype(np.uint8)
+            contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            if not contours:
+                continue
+
+            main_contour = max(contours, key=cv2.contourArea)
+            area = cv2.contourArea(main_contour)
+            if area > best_area:
+                best_area = area
+                best_contour = main_contour
+
+        if best_contour is None:
+            return False
+
+        keypoints = self.find_mask_keypoints(best_contour)
+        if not keypoints:
+            return False
+
+        rinkaku_points = self.extract_contour_between_points(
+            keypoints['all_points'],
+            keypoints['chin'],
+            keypoints['right_edge']
+        )
+        if len(rinkaku_points) < 2:
+            return False
+
+        if self.export_rinkaku_csv:
+            self.save_rinkaku_points_to_csv(rinkaku_points, self.rinkaku_yolo_csv_path)
+
+        success = self.build_landmark_overrides_from_points(
+            rinkaku_points,
+            self.rinkaku_target_landmarks
+        )
+        self.landmark_overrides_loaded = success
+        return success
+
+    def build_landmark_overrides_from_points(self, points, target_landmarks):
+        """
+        輪郭点列から等間隔点を計算して上書き座標を生成する。
+        """
+        if len(points) < 2 or not target_landmarks:
+            return False
+
+        distances = [0.0]
+        for i in range(1, len(points)):
+            dx = points[i][0] - points[i - 1][0]
+            dy = points[i][1] - points[i - 1][1]
+            distances.append(distances[-1] + np.sqrt(dx * dx + dy * dy))
+
+        total_distance = distances[-1]
+        if total_distance <= 0:
+            return False
+
+        target_count = len(target_landmarks)
+        overrides = {}
+        for idx, landmark_id in enumerate(target_landmarks):
+            if target_count > 1:
+                target_distance = (idx / (target_count - 1)) * total_distance
+            else:
+                target_distance = 0.0
+
+            for i in range(len(distances) - 1):
+                if distances[i] <= target_distance <= distances[i + 1]:
+                    segment = distances[i + 1] - distances[i]
+                    ratio = 0.0 if segment <= 0 else (target_distance - distances[i]) / segment
+                    x_interp = points[i][0] + ratio * (points[i + 1][0] - points[i][0])
+                    y_interp = points[i][1] + ratio * (points[i + 1][1] - points[i][1])
+                    overrides[landmark_id] = (x_interp, y_interp)
+                    break
+
+        if not overrides:
+            return False
+
+        self.landmark_overrides_px.update(overrides)
+        return True
+
     def build_landmark_overrides_from_yolo_csv(self, csv_path, target_landmarks):
         """
         YOLO出力の輪郭CSVから等間隔点を計算して上書き座標を生成する。
@@ -740,37 +953,9 @@ class Application:
             print("YOLO輪郭CSVの点数が不足しています")
             return False
 
-        distances = [0.0]
-        for i in range(1, len(points)):
-            dx = points[i][0] - points[i - 1][0]
-            dy = points[i][1] - points[i - 1][1]
-            distances.append(distances[-1] + np.sqrt(dx * dx + dy * dy))
-
-        total_distance = distances[-1]
-        if total_distance <= 0:
-            print("YOLO輪郭CSVの総距離が0です")
-            return False
-
-        target_count = len(target_landmarks)
-        overrides = {}
-        for idx, landmark_id in enumerate(target_landmarks):
-            if target_count > 1:
-                target_distance = (idx / (target_count - 1)) * total_distance
-            else:
-                target_distance = 0.0
-
-            for i in range(len(distances) - 1):
-                if distances[i] <= target_distance <= distances[i + 1]:
-                    segment = distances[i + 1] - distances[i]
-                    ratio = 0.0 if segment <= 0 else (target_distance - distances[i]) / segment
-                    x_interp = points[i][0] + ratio * (points[i + 1][0] - points[i][0])
-                    y_interp = points[i][1] + ratio * (points[i + 1][1] - points[i][1])
-                    overrides[landmark_id] = (x_interp, y_interp)
-                    break
-
-        if overrides:
-            self.landmark_overrides_px.update(overrides)
-            print(f"YOLO輪郭CSVから上書き座標を生成: {len(overrides)}件")
+        success = self.build_landmark_overrides_from_points(points, target_landmarks)
+        if success:
+            print(f"YOLO輪郭CSVから上書き座標を生成: {len(target_landmarks)}件")
             return True
 
         print("上書き座標の生成に失敗しました")

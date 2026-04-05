@@ -1,0 +1,21 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "Python: main.py (facelandmark310)",
+      "type": "python",
+      "request": "launch",
+      "program": "${workspaceFolder}/main.py",
+      "console": "integratedTerminal",
+      "cwd": "${workspaceFolder}",
+      "python": "/home/misa/miniconda/envs/facelandmark310/bin/python",
+      "env": {
+        "PYTHONNOUSERSITE": "1",
+        "LD_PRELOAD": "/lib/x86_64-linux-gnu/libstdc++.so.6",
+        "LD_LIBRARY_PATH": "",
+        "XDG_SESSION_TYPE": "x11",
+        "DISPLAY": ":0"
+      }
+    }
+  ]
+}

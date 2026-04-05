@@ -3,10 +3,24 @@
 特に、マスクなどで顔の一部が隠れている状態でも、3Dモデルを用いて顔全体の再現を目指すことを目的としています。
 MediaPipeで検出した顔の特徴点に顔の3Dモデルをマッピングすることで、リアルタイムに立体的な顔の再構成が可能になります。
 
+## 推奨環境
+このリポジトリでは、`main.py` と `yolofolder/chin_detection.py` を同じ Python 3.10 環境で動かすために、`facelandmark310` 環境を使用します。
+
+環境定義:
+- [environment.facelandmark310.yml](/home/misa/lab/mediapipe/FaceLandmark/environment.facelandmark310.yml)
+
+作成手順:
+```bash
+conda env create -f environment.facelandmark310.yml
+conda activate facelandmark310
+```
+
+`main.py` は OpenGL と user site-package の影響を受けやすいため、`facelandmark310` 環境に activate hook を設定して実行する前提です。現在のセットアップでは `conda activate facelandmark310` の後に `python main.py` を実行します。
+
 ## 実行方法(main)
 ```bash
+conda activate facelandmark310
 python main.py [--texture nomask.jpg] [--draw_landmark]
-python3.10 main.py
 ```
 
 ### 引数
@@ -40,27 +54,29 @@ python3.10 main.py
 
 ## 実行方法(create_MQO)
 ```bash
-python3 create_MQO.py [model/nomask.jpg]
-python3.10 create_MQO.py model/nomask.jpg
+conda activate facelandmark310
+python create_MQO.py [model/nomask.jpg]
 ```
 
 ### 引数
   - 画像の名前は適宜変更してください
 
 ## 動作環境
-- OS: Microsoft Windows 11 Pro
-- バージョン: 10.0.26100 (ビルド 26100)
-- Python: 3.9.13
+- OS: Ubuntu 22.04 系 / X11 実行
+- Python: 3.10.18
+- conda env: `facelandmark310`
 
 ## 主なライブラリ
-- glfw==2.7.0
-- mediapipe==0.10.18
+- glfw==2.10.0
+- mediapipe==0.10.21
 - numpy==1.26.4
-- opencv-contrib-python==4.10.0.84
-- opencv-python==4.10.0.84
-- PyOpenGL==3.1.7
-- PyOpenGL-accelerate==3.1.7
-- PySimpleGUI==5.0.10
+- opencv-contrib-python==4.11.0.86
+- PyOpenGL==3.1.10
+- PyOpenGL-accelerate==3.1.10
+- TkEasyGUI==1.0.41
+- ultralytics==8.3.203
+- torch==2.8.0
+- torchvision==0.23.0
 
 ## 必要なモデルファイル
 - **face_landmarker.task**: MediaPipe Face Landmarker用モデルファイル（プロジェクトルートに配置）
