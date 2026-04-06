@@ -76,14 +76,17 @@ class Application:
         self.rinkaku_yolo_csv_path = 'mqodata/input/masked4_face_up_inst00_rinkaku.csv'
         self.rinkaku_target_landmarks = [116, 123, 187, 207, 192, 214, 170, 176, 148, 152]
 
-        # YOLO輪郭によるリアルタイム補正
-        self.use_realtime_rinkaku_override = True
+        # YOLO輪郭によるリアルタイム補正（変数で固定制御: True/False）
+        self.use_realtime_rinkaku_override = False
         self.landmark_update_interval = 5  # Nフレームに1回だけYOLO推論を実行
         self.realtime_frame_count = 0
         self.export_rinkaku_csv = True     # デバッグ用にCSVを毎回上書き保存
         self.yolo_model_path = 'yolofolder/best.pt'
         self.yolo_model = None
         self.yolo_available = False
+        self.draw_yolo_debug_overlay = True
+        self.latest_yolo_keypoints = None
+        self.latest_rinkaku_points = []
         self.initialize_realtime_rinkaku_model()
 
         #
@@ -218,15 +221,16 @@ class Application:
 
             if should_update:
                 if self.yolo_available:
-                    self.update_landmark_overrides_from_yolo(self.image)
+                    yolo_input_bgr = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
+                    self.update_landmark_overrides_from_yolo(yolo_input_bgr)
                 elif not self.landmark_overrides_loaded:
                     self.landmark_overrides_loaded = self.build_landmark_overrides_from_yolo_csv(
                         self.rinkaku_yolo_csv_path,
                         self.rinkaku_target_landmarks,
                     )
 
-        # YOLOで更新した補正座標をMediaPipeランドマークへ反映する
-        if self.face_mesh.multi_face_landmarks and self.landmark_overrides_px:
+        # YOLO補正が有効なときのみ、補正座標をMediaPipeランドマークへ反映する
+        if self.use_realtime_rinkaku_override and self.face_mesh.multi_face_landmarks and self.landmark_overrides_px:
             for face_landmarks in self.face_mesh.multi_face_landmarks:
                 self.apply_manual_landmark_overrides(face_landmarks)
 
@@ -260,6 +264,10 @@ class Application:
         # 画像の描画を実行
         #
         self.image.flags.writeable = True
+
+        # YOLO特徴点デバッグ表示（chin/right と輪郭線）
+        if self.draw_yolo_debug_overlay:
+            self.draw_yolo_analysis_overlay(self.rgb_image_for_display)
 
         # ステータス表示を追加（RGB画像に描画）
         self.draw_status_info(self.rgb_image_for_display)
@@ -534,6 +542,14 @@ class Application:
                 current_idx = interval_list.index(self.landmark_update_interval)
             self.landmark_update_interval = interval_list[(current_idx + 1) % len(interval_list)]
             print(f"YOLO補正の更新間隔を {self.landmark_update_interval}フレーム/回 に変更")
+
+        # YでYOLOデバッグ描画のON/OFF切り替え
+        if action == glfw.PRESS and key == glfw.KEY_Y:
+            self.draw_yolo_debug_overlay = not self.draw_yolo_debug_overlay
+            if self.draw_yolo_debug_overlay:
+                print("YOLOデバッグ描画を有効化しました")
+            else:
+                print("YOLOデバッグ描画を無効化しました")
         
 
     #
@@ -799,11 +815,43 @@ class Application:
         except Exception as e:
             print(f"輪郭CSV保存エラー: {e}")
 
+    def draw_yolo_analysis_overlay(self, image):
+        """
+        YOLOの解析用に、chin/right座標と輪郭線を画像へ重畳する。
+        """
+        if image is None:
+            return
+
+        # 抽出した輪郭線（right -> chin）
+        if self.latest_rinkaku_points:
+            rinkaku_array = np.array(self.latest_rinkaku_points, dtype=np.int32)
+            cv2.polylines(image, [rinkaku_array], False, (255, 255, 0), 2)
+
+        if not self.latest_yolo_keypoints:
+            return
+
+        chin = self.latest_yolo_keypoints.get('chin')
+        right = self.latest_yolo_keypoints.get('right_edge')
+
+        if chin is not None:
+            cx, cy = int(chin[0]), int(chin[1])
+            cv2.circle(image, (cx, cy), 7, (255, 0, 0), -1)
+            cv2.putText(image, f"chin({cx},{cy})", (cx + 8, cy - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
+
+        if right is not None:
+            rx, ry = int(right[0]), int(right[1])
+            cv2.circle(image, (rx, ry), 7, (0, 255, 255), -1)
+            cv2.putText(image, f"right({rx},{ry})", (rx + 8, ry - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
+
     def update_landmark_overrides_from_yolo(self, bgr_image):
         """
         現在フレームからYOLO輪郭を抽出し、上書き座標を更新する。
         """
         if not self.yolo_available or self.yolo_model is None or bgr_image is None:
+            self.latest_yolo_keypoints = None
+            self.latest_rinkaku_points = []
             return False
 
         # YOLO側の入力サイズをアプリ表示サイズに合わせる
@@ -816,9 +864,13 @@ class Application:
             results = self.yolo_model(target_image, max_det=1, verbose=False)[0]
         except Exception as e:
             print(f"YOLO推論エラー: {e}")
+            self.latest_yolo_keypoints = None
+            self.latest_rinkaku_points = []
             return False
 
         if results.masks is None:
+            self.latest_yolo_keypoints = None
+            self.latest_rinkaku_points = []
             return False
 
         best_contour = None
@@ -839,10 +891,14 @@ class Application:
                 best_contour = main_contour
 
         if best_contour is None:
+            self.latest_yolo_keypoints = None
+            self.latest_rinkaku_points = []
             return False
 
         keypoints = self.find_mask_keypoints(best_contour)
         if not keypoints:
+            self.latest_yolo_keypoints = None
+            self.latest_rinkaku_points = []
             return False
 
         rinkaku_points = self.extract_contour_between_points(
@@ -851,7 +907,12 @@ class Application:
             keypoints['right_edge']
         )
         if len(rinkaku_points) < 2:
+            self.latest_yolo_keypoints = keypoints
+            self.latest_rinkaku_points = []
             return False
+
+        self.latest_yolo_keypoints = keypoints
+        self.latest_rinkaku_points = rinkaku_points
 
         if self.export_rinkaku_csv:
             self.save_rinkaku_points_to_csv(rinkaku_points, self.rinkaku_yolo_csv_path)
