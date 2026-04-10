@@ -47,10 +47,6 @@ class Application:
         # 顔のランドマークを記述するかどうか
         self.draw_landmark = draw_landmark
 
-        # 顔検出モデル使用フラグ
-        self.use_face_landmarker = False 
-        self.face_landmarker_results = None  
-        
         # モデル描画制御
         self.draw_model_flag = True  # モデル描画のON/OFF
         
@@ -60,10 +56,6 @@ class Application:
         # ステータス表示モード (0:コンパクト, 1:詳細, 2:コンソール)
         self.status_display_mode = 0
         self.console_printed = False
-        
-        # Face Landmarkerスケール係数
-        self.face_landmarker_scale = 1.0
-        self.manual_scale_set = False  # 手動スケール調整フラグ
         
         # 録画用変数
         self.use_record = False # 初期値はFalse
@@ -422,15 +414,9 @@ class Application:
             
             # print(f"モデル平行移動: X={model_shift_X:.1f}, Y={model_shift_Y:.1f}")
         
-        # Face Landmarker直接姿勢推定モードの場合は、face_landmarker_scaleを使用
-        if hasattr(self, 'use_direct_pose') and self.use_direct_pose:
-            model_scale_X = 1.0 * scale_x * self.face_landmarker_scale
-            model_scale_Y = 1.0 * scale_y * self.face_landmarker_scale
-            model_scale_Z = 1.0 * self.face_landmarker_scale
-        else:
-            model_scale_X = 1.0 * scale_x
-            model_scale_Y = 1.0 * scale_y
-            model_scale_Z = 1.0 
+        model_scale_X = 1.0 * scale_x
+        model_scale_Y = 1.0 * scale_y
+        model_scale_Z = 1.0 
     
         # 世界座標系の描画
         if self.draw_axis:
@@ -1065,47 +1051,6 @@ class Application:
         image = cv2.cvtColor (image, cv2.COLOR_BGR2RGB)
         self.image = image
 
-    #
-    # 両方の姿勢推定を実行して結果を比較する関数（デバッグ用）
-    #
-    def compute_pose_comparison(self, point_2D, point_3D):
-        """
-        PnP方式とFace Landmarker方式の両方を実行して結果を比較
-        """
-        # 1. 従来のPnP方式を実行
-        pnp_success, pnp_vector, pnp_angle = self.compute_camera_pose(point_2D, point_3D)
-        
-        # 2. Face Landmarker方式を実行（利用可能な場合）
-        fl_success, fl_vector, fl_angle = False, None, None
-        if (self.use_face_landmarker and self.face_landmarker_results and 
-            hasattr(self.face_landmarker_results, 'facial_transformation_matrixes') and
-            self.face_landmarker_results.facial_transformation_matrixes):
-            
-            fl_success, fl_vector, fl_angle = self.compute_pose_from_face_landmarker()
-        
-        # 3. 結果を比較・保存
-        comparison_result = {
-            'timestamp': datetime.datetime.now(),
-            'pnp_success': pnp_success,
-            'pnp_vector': pnp_vector,
-            'pnp_angle': pnp_angle,
-            'fl_success': fl_success,
-            'fl_vector': fl_vector,
-            'fl_angle': fl_angle
-        }
-        
-        self.comparison_results.append(comparison_result)
-        
-        # 結果をファイルに保存（一度だけ）
-        if not hasattr(self, 'comparison_saved') or not self.comparison_saved:
-            self.save_pose_comparison_results(comparison_result)
-            self.comparison_saved = True
-        
-        # 結果をファイルに保存（最新の10件のみ保持）
-        if len(self.comparison_results) > 10:
-            self.comparison_results = self.comparison_results[-10:]
-        
-        return pnp_success, pnp_vector, pnp_angle
     
 
     def print_status_to_console(self):
@@ -1135,77 +1080,6 @@ class Application:
         if self.status_display_mode == 2:
             self.console_printed = True
     
-    #
-    # 姿勢比較結果をファイルに保存する関数
-    #
-    def save_pose_comparison_results(self, comparison_result):
-        """
-        姿勢比較結果を詳細なテキストファイルとして保存
-        """
-        try:
-            import os
-            # outputディレクトリが存在しない場合は作成
-            os.makedirs('output', exist_ok=True)
-            
-            today = str(datetime.date.today()).replace('-','')
-            filename = f'output/pose_comparison_{today}_{self.count_img}.txt'
-            
-            with open(filename, 'w', encoding='utf-8') as f:
-                f.write("=== 姿勢推定比較結果 ===\n")
-                f.write(f"画像番号: {self.count_img}\n")
-                f.write(f"日時: {comparison_result['timestamp']}\n\n")
-                
-                # PnP方式の結果
-                f.write("--- PnP方式 ---\n")
-                f.write(f"成功: {comparison_result['pnp_success']}\n")
-                if comparison_result['pnp_success'] and comparison_result['pnp_angle'] is not None:
-                    angle = comparison_result['pnp_angle']
-                    f.write(f"オイラー角: X={angle[0]:.3f}, Y={angle[1]:.3f}, Z={angle[2]:.3f}\n")
-                    if comparison_result['pnp_vector'] is not None:
-                        vector = comparison_result['pnp_vector']
-                        f.write(f"方向ベクトル: ({vector[0]}, {vector[1]})\n")
-                else:
-                    f.write("姿勢推定失敗\n")
-                f.write("\n")
-                
-                # Face Landmarker方式の結果
-                f.write("--- Face Landmarker方式 ---\n")
-                f.write(f"成功: {comparison_result['fl_success']}\n")
-                if comparison_result['fl_success'] and comparison_result['fl_angle'] is not None:
-                    angle = comparison_result['fl_angle']
-                    f.write(f"オイラー角: X={angle[0]:.3f}, Y={angle[1]:.3f}, Z={angle[2]:.3f}\n")
-                    # Face Landmarkerのスケール係数を追加
-                    if hasattr(self, 'face_landmarker_scale'):
-                        f.write(f"スケール係数: {self.face_landmarker_scale}\n")
-                    if comparison_result['fl_vector'] is not None:
-                        vector = comparison_result['fl_vector']
-                        f.write(f"方向ベクトル: {vector}\n")
-                else:
-                    f.write("姿勢推定失敗またはFace Landmarker無効\n")
-                f.write("\n")
-                
-                # 角度差分の計算と保存
-                if (comparison_result['pnp_success'] and comparison_result['fl_success'] and 
-                    comparison_result['pnp_angle'] is not None and comparison_result['fl_angle'] is not None):
-                    
-                    pnp_angle = comparison_result['pnp_angle']
-                    fl_angle = comparison_result['fl_angle']
-                    
-                    diff_x = fl_angle[0] - pnp_angle[0]
-                    diff_y = fl_angle[1] - pnp_angle[1]
-                    diff_z = fl_angle[2] - pnp_angle[2]
-                    diff_norm = np.sqrt(diff_x**2 + diff_y**2 + diff_z**2)
-                    
-                    f.write("--- 角度差分 (Face Landmarker - PnP) ---\n")
-                    f.write(f"X軸: {diff_x:.3f}度\n")
-                    f.write(f"Y軸: {diff_y:.3f}度\n")
-                    f.write(f"Z軸: {diff_z:.3f}度\n")
-                    f.write(f"差分ノルム: {diff_norm:.3f}度\n")
-                
-            print(f"姿勢比較結果を保存しました: {filename}")
-            
-        except Exception as e:
-            print(f"姿勢比較結果の保存に失敗しました: {e}")
 
     #
     # 現在の状態を画面に表示する関数
@@ -1281,9 +1155,3 @@ class Application:
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)
         y_offset += line_height
         
-        # Face Landmarkerスケール情報（Face Landmarker有効時のみ）
-        if self.use_face_landmarker:
-            scale_mode = "Manual" if hasattr(self, 'manual_scale_set') and self.manual_scale_set else "Auto"
-            scale_text = f"FL Scale: {self.face_landmarker_scale:.2f} ({scale_mode})"
-            cv2.putText(image, scale_text, (text_x, y_offset),
-                       cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 255, 0), 1)  # 黄色
