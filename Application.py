@@ -73,11 +73,12 @@ class Application:
         # 形式: {ランドマーク番号: (x_px, y_px)}
         self.landmark_overrides_px = {}
         self.landmark_overrides_loaded = False
-        self.rinkaku_yolo_csv_path = 'mqodata/input/masked4_face_up_inst00_rinkaku.csv'
-        self.rinkaku_target_landmarks = [116, 123, 187, 207, 192, 214, 170, 176, 148, 152]
+        self.rinkaku_yolo_csv_path = 'mqodata/input/yolooutput.csv'
+        self.rinkaku_target_landmarks_right = [116, 123, 187, 207, 192, 214, 170, 176, 148, 152]
+        self.rinkaku_target_landmarks_left = [345, 352, 376, 433, 367, 364, 378, 400, 377, 152]
 
         # YOLO輪郭によるリアルタイム補正（変数で固定制御: True/False）
-        self.use_realtime_rinkaku_override = False
+        self.use_realtime_rinkaku_override = True
         self.landmark_update_interval = 5  # Nフレームに1回だけYOLO推論を実行
         self.realtime_frame_count = 0
         self.export_rinkaku_csv = True     # デバッグ用にCSVを毎回上書き保存
@@ -226,7 +227,7 @@ class Application:
                 elif not self.landmark_overrides_loaded:
                     self.landmark_overrides_loaded = self.build_landmark_overrides_from_yolo_csv(
                         self.rinkaku_yolo_csv_path,
-                        self.rinkaku_target_landmarks,
+                        self.rinkaku_target_landmarks_right,
                     )
 
         # YOLO補正が有効なときのみ、補正座標をMediaPipeランドマークへ反映する
@@ -243,7 +244,7 @@ class Application:
         # if not self.landmark_overrides_loaded:
         #     self.build_landmark_overrides_from_yolo_csv(
         #         self.rinkaku_yolo_csv_path,
-        #         self.rinkaku_target_landmarks
+        #         self.rinkaku_target_landmarks_right
         #     )
         #     self.landmark_overrides_loaded = True
 
@@ -919,7 +920,7 @@ class Application:
 
         success = self.build_landmark_overrides_from_points(
             rinkaku_points,
-            self.rinkaku_target_landmarks
+            self.rinkaku_target_landmarks_right
         )
         self.landmark_overrides_loaded = success
         return success

@@ -104,7 +104,7 @@ class CreateMQO:
         self.outputs.append('Material 1 {\n')
         
         if self.masked_face == True:
-            self.outputs.append('\t"mat1" shader(3) col(0.176 1.000 0.000 0.500) dif(0.800) amb(0.600) emi(0.000) spc(0.000) power(5.00) tex("nomask.jpg")\n')
+            self.outputs.append('\t"mat1" shader(3) col(0.176 1.000 0.000 0.500) dif(0.800) amb(0.600) emi(0.000) spc(0.000) power(5.00) tex("%s")\n' % texture_filename)
         else:
             self.outputs.append('\t"mat1" shader(3) col(0.176 1.000 0.000 0.500) dif(0.800) amb(0.600) emi(0.000) spc(0.000) power(5.00) tex("%s")\n' % texture_filename)
         self.outputs.append('}\n')
