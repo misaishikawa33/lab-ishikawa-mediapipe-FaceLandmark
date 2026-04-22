@@ -52,6 +52,9 @@ class Application:
         
         # ランドマーク位置調整機能
         self.adjust_landmarks = False
+
+        # 顔角度（yaw, pitch, roll）
+        self.angle = None
         
         # ステータス表示モード (0:コンパクト, 1:詳細, 2:コンソール)
         self.status_display_mode = 0
@@ -65,21 +68,29 @@ class Application:
         # 形式: {ランドマーク番号: (x_px, y_px)}
         self.landmark_overrides_px = {}
         self.landmark_overrides_loaded = False
+        
+        # YOLO輪郭によるリアルタイム補正（メモリ上で直接処理）
+        # 設定項目：
+        self.use_realtime_rinkaku_override = True          # YOLO補正の有効/無効
+        self.landmark_update_interval = 5                  # Nフレームに1回だけYOLO推論を実行
+        self.realtime_frame_count = 0
+        
+        # デバッグオプション
+        self.export_rinkaku_csv = False                    # True=デバッグ用にCSV出力, False=メモリのみで処理（推奨）
         self.rinkaku_yolo_csv_path = 'mqodata/input/yolooutput.csv'
         self.rinkaku_target_landmarks_right = [116, 123, 187, 207, 192, 214, 170, 176, 148, 152]
         self.rinkaku_target_landmarks_left = [345, 352, 376, 433, 367, 364, 378, 400, 377, 152]
-
-        # YOLO輪郭によるリアルタイム補正（変数で固定制御: True/False）
-        self.use_realtime_rinkaku_override = True
-        self.landmark_update_interval = 5  # Nフレームに1回だけYOLO推論を実行
-        self.realtime_frame_count = 0
-        self.export_rinkaku_csv = True     # デバッグ用にCSVを毎回上書き保存
+        
+        # YOLOモデル
         self.yolo_model_path = 'yolofolder/best.pt'
         self.yolo_model = None
         self.yolo_available = False
+        
+        # 表示用
         self.draw_yolo_debug_overlay = True
         self.latest_yolo_keypoints = None
         self.latest_rinkaku_points = []
+        
         self.initialize_realtime_rinkaku_model()
 
         #
@@ -205,22 +216,17 @@ class Application:
         # フレームカウンタ更新（リアルタイム補正の間引きに使用）
         self.realtime_frame_count += 1
 
-        # NフレームごとにYOLOを実行して、輪郭CSVと補正座標を更新する
+        # NフレームごとにYOLOを実行して、輪郭から補正座標を更新する
+        # (CSV経由ではなくメモリ上で直接処理)
         if self.use_realtime_rinkaku_override:
             should_update = (
                 not self.landmark_overrides_loaded
                 or (self.realtime_frame_count % max(1, self.landmark_update_interval) == 0)
             )
 
-            if should_update:
-                if self.yolo_available:
-                    yolo_input_bgr = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
-                    self.update_landmark_overrides_from_yolo(yolo_input_bgr)
-                elif not self.landmark_overrides_loaded:
-                    self.landmark_overrides_loaded = self.build_landmark_overrides_from_yolo_csv(
-                        self.rinkaku_yolo_csv_path,
-                        self.rinkaku_target_landmarks_right,
-                    )
+            if should_update and self.yolo_available:
+                yolo_input_bgr = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
+                self.update_landmark_overrides_from_yolo(yolo_input_bgr)
 
         # YOLO補正が有効なときのみ、補正座標をMediaPipeランドマークへ反映する
         if self.use_realtime_rinkaku_override and self.face_mesh.multi_face_landmarks and self.landmark_overrides_px:
@@ -337,11 +343,11 @@ class Application:
             if success and self.draw_model_flag:
                 self.draw_model()
     
-        else:
+        #else:
             #
             # 検出が安定しない
             #
-            print("not detection")    
+         #    print("not detection")    
 
 
         # 関数実行回数を更新
@@ -901,14 +907,17 @@ class Application:
         self.latest_yolo_keypoints = keypoints
         self.latest_rinkaku_points = rinkaku_points
 
+        # (デバッグ用) CSV出力が有効な場合のみ保存
         if self.export_rinkaku_csv:
             self.save_rinkaku_points_to_csv(rinkaku_points, self.rinkaku_yolo_csv_path)
 
+        # メモリ上で直接上書き座標を生成・反映
         success = self.build_landmark_overrides_from_points(
             rinkaku_points,
             self.rinkaku_target_landmarks_right
         )
         self.landmark_overrides_loaded = success
+        
         return success
 
     def build_landmark_overrides_from_points(self, points, target_landmarks):
@@ -1075,6 +1084,8 @@ class Application:
         print("  [Q] 終了    [S] 画像保存    [R] 録画")
         print("  [N] モデル描画    [P] 対応点モード")
         print("  [T] 表示モード切替")
+        print("  [F] YOLOYOLO補正の更新間隔切替")
+        print("  [Y] YOLOデバッグ描画切替")
         print("=" * 50)
         
         if self.status_display_mode == 2:
@@ -1102,23 +1113,24 @@ class Application:
         """
         コンパクトなステータス表示（ONの機能のみ表示）
         """
-        # ONになっている機能のみを表示
-        active_features = []
-        if self.draw_model_flag:
-            active_features.append("Model Draw")
-        
-        # ONの機能がない場合
-        if not active_features:
-            status_text = "All features OFF"
-        else:
-            status_text = "ON: " + ", ".join(active_features)
-        
+        model_status = "ON" if self.draw_model_flag else "OFF"
+        status_text = f"Model Draw: {model_status}"
         cv2.putText(image, status_text, (10, 30),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+
+        if self.angle is None:
+            angle_text = "Face Yaw: N/A"
+        else:
+            yaw = self.angle[0]
+            rounded_yaw = int(round(yaw / 5.0) * 5)
+            angle_text = f"Face Yaw: {rounded_yaw} deg"
+
+        cv2.putText(image, angle_text, (10, 58),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     
     def draw_detailed_status_info(self, image):
         """
-        詳細なステータス表示（従来の表示）
+        詳細なステータス表示
         """
         # 背景の半透明ボックスを描画（見やすくするため）
         # 右上に配置
