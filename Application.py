@@ -682,42 +682,6 @@ class Application:
             self.modelview[14] = t[2]
             self.modelview[15] = 1.0
 
-    #
-    # ランドマーク座標の手動上書き関連
-    #
-    def load_landmark_overrides(self, csv_path):
-        """
-        CSVからランドマーク上書き座標を読み込む。
-        形式: idx,x,y（ピクセル値）。#で始まる行はコメントとして無視。
-        """
-        import os
-        if not os.path.exists(csv_path):
-            return
-        try:
-            overrides = {}
-            with open(csv_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line or line.startswith('#'):
-                        continue
-                    parts = [p.strip() for p in line.split(',')]
-                    if len(parts) < 3:
-                        continue
-                    try:
-                        idx = int(parts[0])
-                        x_px = float(parts[1])
-                        y_px = float(parts[2])
-                        overrides[idx] = (x_px, y_px)
-                    except ValueError:
-                        # 数値に変換できない行はスキップ
-                        continue
-            # 既存の辞書に上書き（CSV優先）
-            self.landmark_overrides_px.update(overrides)
-            if overrides:
-                print(f"landmark_overrides.csv を読み込み: {len(overrides)}件")
-        except Exception as e:
-            print(f"ランドマーク上書きCSV読込エラー: {e}")
-
     def initialize_realtime_rinkaku_model(self):
         """
         リアルタイム輪郭補正に使うYOLOモデルを初期化する。
@@ -959,64 +923,6 @@ class Application:
 
         self.landmark_overrides_px.update(overrides)
         return True
-
-    def build_landmark_overrides_from_yolo_csv(self, csv_path, target_landmarks):
-        """
-        YOLO出力の輪郭CSVから等間隔点を計算して上書き座標を生成する。
-        """
-        import csv
-        import os
-
-        if not os.path.exists(csv_path):
-            print(f"YOLO輪郭CSVが見つかりません: {csv_path}")
-            return False
-
-        points = []
-        try:
-            with open(csv_path, 'r', encoding='utf-8') as f:
-                reader = csv.DictReader(f)
-                fieldnames = reader.fieldnames or []
-                has_xy_jp = 'x座標' in fieldnames and 'y座標' in fieldnames
-                has_xy_en = 'x' in fieldnames and 'y' in fieldnames
-
-                for row in reader:
-                    try:
-                        if has_xy_jp:
-                            x_val = row.get('x座標', '').strip()
-                            y_val = row.get('y座標', '').strip()
-                        elif has_xy_en:
-                            x_val = row.get('x', '').strip()
-                            y_val = row.get('y', '').strip()
-                        elif len(fieldnames) >= 3:
-                            x_val = row.get(fieldnames[1], '').strip()
-                            y_val = row.get(fieldnames[2], '').strip()
-                        else:
-                            values = list(row.values())
-                            if len(values) < 2:
-                                continue
-                            x_val = str(values[0]).strip()
-                            y_val = str(values[1]).strip()
-
-                        x = float(x_val)
-                        y = float(y_val)
-                        points.append((x, y))
-                    except ValueError:
-                        continue
-        except Exception as e:
-            print(f"YOLO輪郭CSV読込エラー: {e}")
-            return False
-
-        if len(points) < 2 or not target_landmarks:
-            print("YOLO輪郭CSVの点数が不足しています")
-            return False
-
-        success = self.build_landmark_overrides_from_points(points, target_landmarks)
-        if success:
-            print(f"YOLO輪郭CSVから上書き座標を生成: {len(target_landmarks)}件")
-            return True
-
-        print("上書き座標の生成に失敗しました")
-        return False
 
     def apply_manual_landmark_overrides(self, face_landmarks):
         """
