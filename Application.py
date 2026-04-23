@@ -94,6 +94,12 @@ class Application:
         }
         self.rinkaku_yaw_threshold_neg = -20            
         self.rinkaku_yaw_threshold_pos = 20              
+
+        # 対応点選択モード
+        # False: Pキーで手動切替（従来）
+        # True: 顔角度で自動切替（基本=datalist3, yaw>=20:datalist2, yaw<=-20:datalist1）
+        self.use_angle_based_point_selection = True
+        self.point_mode_yaw_threshold = 20
         
         # YOLOモデル
         self.yolo_model_path = 'yolofolder/best.pt'
@@ -310,22 +316,30 @@ class Application:
             point_2D = []
             point_3D = []
             cnt = 0
+
+            # 対応点モード決定
+            # 角度連動が有効なら自動選択、無効ならPキーの手動選択を使う
+            active_detect_mode = self.detect_stable
+            if self.use_angle_based_point_selection:
+                current_yaw = None if self.angle is None else self.angle[0]
+                active_detect_mode = self.get_point_mode_from_yaw(current_yaw)
+
             #
             # 対応点を指定(顔全体を用いる場合は0)
             #
-            if self.detect_stable == 0:
+            if active_detect_mode == 0:
                 # print("all")
                 point_list = self.point_list
                 point_3D = self.point_3D
-            elif self.detect_stable == 1:
+            elif active_detect_mode == 1:
                 # print("upper")
                 point_list = self.point_list1
                 point_3D = self.point_3D1
-            elif self.detect_stable == 2:
+            elif active_detect_mode == 2:
                 # print("selected")
                 point_list = self.point_list2
                 point_3D = self.point_3D2
-            elif self.detect_stable == 3:
+            elif active_detect_mode == 3:
                 # print("custom")
                 point_list = self.point_list3
                 point_3D = self.point_3D3
@@ -517,7 +531,7 @@ class Application:
                 print("対応点をモード2(左顔)に変更")
             elif self.detect_stable == 2:
                 self.detect_stable = 3
-                print("対応点をモード3(正面)に変更")
+                print("対応点をモード3(目元)に変更")
             elif self.detect_stable == 3:
                 self.detect_stable = 0
                 print("対応点をモード0(顔全体)に変更")
@@ -735,6 +749,19 @@ class Application:
         if yaw <= self.rinkaku_yaw_threshold_neg:
             return 'right'
         return None
+
+    def get_point_mode_from_yaw(self, yaw):
+        """
+        対応点モードを顔角度から決定する。
+        0: 全点, 1: 右顔, 2: 左顔, 3: 目元
+        """
+        if yaw is None:
+            return 3
+        if yaw >= self.point_mode_yaw_threshold:
+            return 2
+        if yaw <= -self.point_mode_yaw_threshold:
+            return 1
+        return 3
 
     def find_mask_keypoints(self, contour):
         """
