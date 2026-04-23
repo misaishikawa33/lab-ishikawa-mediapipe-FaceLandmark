@@ -80,6 +80,8 @@ class Application:
         self.rinkaku_yolo_csv_path = 'mqodata/input/yolooutput.csv'
         self.rinkaku_target_landmarks_right = [116, 123, 187, 207, 192, 214, 170, 176, 148, 152]
         self.rinkaku_target_landmarks_left = [345, 352, 376, 433, 367, 364, 378, 400, 377, 152]
+        self.rinkaku_yaw_threshold_neg = -20             # 現在有効: yaw <= -20 のとき補正を実行
+        self.rinkaku_yaw_threshold_pos = 20              # 将来用: yaw >= 20 の処理分岐に使用
         
         # YOLOモデル
         self.yolo_model_path = 'yolofolder/best.pt'
@@ -216,6 +218,17 @@ class Application:
         # フレームカウンタ更新（リアルタイム補正の間引きに使用）
         self.realtime_frame_count += 1
 
+        # 角度制御（draw_compact_status_info と同じ self.angle[0] の yaw を使用）
+        yaw = None if self.angle is None else self.angle[0]
+        run_rinkaku_override = yaw is not None and yaw <= self.rinkaku_yaw_threshold_neg
+
+        # 将来拡張用の角度分岐（現時点では -30 以下のみ実処理）
+        if yaw is not None:
+            if yaw >= self.rinkaku_yaw_threshold_pos:
+                pass
+            elif self.rinkaku_yaw_threshold_neg < yaw < self.rinkaku_yaw_threshold_pos:
+                pass
+
         # NフレームごとにYOLOを実行して、輪郭から補正座標を更新する
         # (CSV経由ではなくメモリ上で直接処理)
         if self.use_realtime_rinkaku_override:
@@ -224,12 +237,12 @@ class Application:
                 or (self.realtime_frame_count % max(1, self.landmark_update_interval) == 0)
             )
 
-            if should_update and self.yolo_available:
+            if should_update and self.yolo_available and run_rinkaku_override:
                 yolo_input_bgr = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
                 self.update_landmark_overrides_from_yolo(yolo_input_bgr)
 
         # YOLO補正が有効なときのみ、補正座標をMediaPipeランドマークへ反映する
-        if self.use_realtime_rinkaku_override and self.face_mesh.multi_face_landmarks and self.landmark_overrides_px:
+        if self.use_realtime_rinkaku_override and run_rinkaku_override and self.face_mesh.multi_face_landmarks and self.landmark_overrides_px:
             for face_landmarks in self.face_mesh.multi_face_landmarks:
                 self.apply_manual_landmark_overrides(face_landmarks)
 
