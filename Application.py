@@ -80,8 +80,20 @@ class Application:
         self.rinkaku_yolo_csv_path = 'mqodata/input/yolooutput.csv'
         self.rinkaku_target_landmarks_right = [116, 123, 187, 207, 192, 214, 170, 176, 148, 152]
         self.rinkaku_target_landmarks_left = [345, 352, 376, 433, 367, 364, 378, 400, 377, 152]
-        self.rinkaku_yaw_threshold_neg = -20             # 現在有効: yaw <= -20 のとき補正を実行
-        self.rinkaku_yaw_threshold_pos = 20              # 将来用: yaw >= 20 の処理分岐に使用
+        self.rinkaku_mode_config = {
+            'right': {
+                'start_key': 'right_edge',
+                'avoid_key': None,
+                'target_landmarks': self.rinkaku_target_landmarks_right,
+            },
+            'left': {
+                'start_key': 'left_edge',
+                'avoid_key': 'right_edge',
+                'target_landmarks': self.rinkaku_target_landmarks_left,
+            },
+        }
+        self.rinkaku_yaw_threshold_neg = -20            
+        self.rinkaku_yaw_threshold_pos = 20              
         
         # YOLOモデル
         self.yolo_model_path = 'yolofolder/best.pt'
@@ -220,14 +232,8 @@ class Application:
 
         # 角度制御（draw_compact_status_info と同じ self.angle[0] の yaw を使用）
         yaw = None if self.angle is None else self.angle[0]
-        run_rinkaku_override = yaw is not None and yaw <= self.rinkaku_yaw_threshold_neg
-
-        # 将来拡張用の角度分岐（現時点では -30 以下のみ実処理）
-        if yaw is not None:
-            if yaw >= self.rinkaku_yaw_threshold_pos:
-                pass
-            elif self.rinkaku_yaw_threshold_neg < yaw < self.rinkaku_yaw_threshold_pos:
-                pass
+        rinkaku_mode = self.get_rinkaku_mode_from_yaw(yaw)
+        run_rinkaku_override = rinkaku_mode is not None
 
         # NフレームごとにYOLOを実行して、輪郭から補正座標を更新する
         # (CSV経由ではなくメモリ上で直接処理)
@@ -239,7 +245,7 @@ class Application:
 
             if should_update and self.yolo_available and run_rinkaku_override:
                 yolo_input_bgr = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
-                self.update_landmark_overrides_from_yolo(yolo_input_bgr)
+                self.update_landmark_overrides_from_yolo(yolo_input_bgr, rinkaku_mode)
 
         # YOLO補正が有効なときのみ、補正座標をMediaPipeランドマークへ反映する
         if self.use_realtime_rinkaku_override and run_rinkaku_override and self.face_mesh.multi_face_landmarks and self.landmark_overrides_px:
@@ -292,14 +298,6 @@ class Application:
             # ランドマークを描画するメソッドを実行
             self.draw_landmarks(self.rgb_image_for_display)
 
-            
-
-
-        # ランドマークの描画（RGB画像に描画）
-        if self.draw_landmark:
-            # ランドマークを描画するメソッドを実行
-            self.draw_landmarks(self.rgb_image_for_display)
-
 
         # 
         # カメラ姿勢推定
@@ -327,6 +325,10 @@ class Application:
                 # print("selected")
                 point_list = self.point_list2
                 point_3D = self.point_3D2
+            elif self.detect_stable == 3:
+                # print("custom")
+                point_list = self.point_list3
+                point_3D = self.point_3D3
             else:
                 point_list = self.point_list
                 point_3D = self.point_3D
@@ -509,11 +511,14 @@ class Application:
         if action == glfw.PRESS and key == glfw.KEY_P:
             if self.detect_stable == 0:
                 self.detect_stable = 1
-                print("対応点をモード1(顔上部)に変更")
+                print("対応点をモード1(右顔)に変更")
             elif self.detect_stable == 1:
                 self.detect_stable = 2
-                print("対応点をモード2(ずれが小さいランドマーク選択)に変更")
+                print("対応点をモード2(左顔)に変更")
             elif self.detect_stable == 2:
+                self.detect_stable = 3
+                print("対応点をモード3(正面)に変更")
+            elif self.detect_stable == 3:
                 self.detect_stable = 0
                 print("対応点をモード0(顔全体)に変更")
             else:
@@ -718,6 +723,19 @@ class Application:
             self.yolo_available = False
             print(f"YOLO初期化に失敗しました: {e}")
 
+    def get_rinkaku_mode_from_yaw(self, yaw):
+        """
+        yaw値から輪郭補正モードを返す。
+        yaw >= 20 なら左向き、yaw <= -20 なら右向き、それ以外は None。
+        """
+        if yaw is None:
+            return None
+        if yaw >= self.rinkaku_yaw_threshold_pos:
+            return 'left'
+        if yaw <= self.rinkaku_yaw_threshold_neg:
+            return 'right'
+        return None
+
     def find_mask_keypoints(self, contour):
         """
         マスク輪郭から顎/鼻/左右端を抽出する。
@@ -765,6 +783,55 @@ class Application:
             return points[right_idx:chin_idx + 1]
         return points[right_idx:] + points[:chin_idx + 1]
 
+    def extract_contour_between_points_avoiding(self, points, start_point, end_point, avoid_point):
+        """
+        start_point から end_point までの2経路のうち、avoid_point を通らない方を返す。
+        """
+        if not points:
+            return []
+
+        start_idx = None
+        end_idx = None
+        for i, p in enumerate(points):
+            if p == start_point:
+                start_idx = i
+            if p == end_point:
+                end_idx = i
+
+        if start_idx is None or end_idx is None:
+            return []
+
+        n = len(points)
+
+        forward_path = []
+        i = start_idx
+        while True:
+            forward_path.append(points[i])
+            if i == end_idx:
+                break
+            i = (i + 1) % n
+
+        backward_path = []
+        i = start_idx
+        while True:
+            backward_path.append(points[i])
+            if i == end_idx:
+                break
+            i = (i - 1 + n) % n
+
+        if avoid_point is None or avoid_point == start_point or avoid_point == end_point:
+            return forward_path
+
+        forward_has_avoid = avoid_point in forward_path
+        backward_has_avoid = avoid_point in backward_path
+
+        if forward_has_avoid and not backward_has_avoid:
+            return backward_path
+        if backward_has_avoid and not forward_has_avoid:
+            return forward_path
+
+        return forward_path
+
     def save_rinkaku_points_to_csv(self, points, csv_path):
         """
         輪郭点をCSVに保存する（毎回上書き）。
@@ -787,12 +854,12 @@ class Application:
 
     def draw_yolo_analysis_overlay(self, image):
         """
-        YOLOの解析用に、chin/right座標と輪郭線を画像へ重畳する。
+        YOLOの解析用に、chin/left/right座標と輪郭線を画像へ重畳する。
         """
         if image is None:
             return
 
-        # 抽出した輪郭線（right -> chin）
+        # 抽出した輪郭線
         if self.latest_rinkaku_points:
             rinkaku_array = np.array(self.latest_rinkaku_points, dtype=np.int32)
             cv2.polylines(image, [rinkaku_array], False, (255, 255, 0), 2)
@@ -801,6 +868,7 @@ class Application:
             return
 
         chin = self.latest_yolo_keypoints.get('chin')
+        left = self.latest_yolo_keypoints.get('left_edge')
         right = self.latest_yolo_keypoints.get('right_edge')
 
         if chin is not None:
@@ -809,13 +877,20 @@ class Application:
             cv2.putText(image, f"chin({cx},{cy})", (cx + 8, cy - 8),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 2)
 
+        if left is not None:
+            lx, ly = int(left[0]), int(left[1])
+            cv2.circle(image, (lx, ly), 7, (0, 255, 0), -1)
+            cv2.putText(image, f"left({lx},{ly})", (lx + 8, ly - 8),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 0), 2)
+
         if right is not None:
             rx, ry = int(right[0]), int(right[1])
             cv2.circle(image, (rx, ry), 7, (0, 255, 255), -1)
             cv2.putText(image, f"right({rx},{ry})", (rx + 8, ry - 8),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
 
-    def update_landmark_overrides_from_yolo(self, bgr_image):
+
+    def update_landmark_overrides_from_yolo(self, bgr_image, rinkaku_mode='right'):
         """
         現在フレームからYOLO輪郭を抽出し、上書き座標を更新する。
         """
@@ -871,11 +946,30 @@ class Application:
             self.latest_rinkaku_points = []
             return False
 
-        rinkaku_points = self.extract_contour_between_points(
-            keypoints['all_points'],
-            keypoints['chin'],
-            keypoints['right_edge']
-        )
+        mode_config = self.rinkaku_mode_config.get(rinkaku_mode, self.rinkaku_mode_config['right'])
+        contour_start_point = keypoints.get(mode_config['start_key'])
+        avoid_key = mode_config['avoid_key']
+        avoid_point = keypoints.get(avoid_key) if avoid_key else None
+        target_landmarks = mode_config['target_landmarks']
+
+        if contour_start_point is None:
+            self.latest_yolo_keypoints = keypoints
+            self.latest_rinkaku_points = []
+            return False
+
+        if avoid_point is not None:
+            rinkaku_points = self.extract_contour_between_points_avoiding(
+                keypoints['all_points'],
+                contour_start_point,
+                keypoints['chin'],
+                avoid_point
+            )
+        else:
+            rinkaku_points = self.extract_contour_between_points(
+                keypoints['all_points'],
+                keypoints['chin'],
+                contour_start_point
+            )
         if len(rinkaku_points) < 2:
             self.latest_yolo_keypoints = keypoints
             self.latest_rinkaku_points = []
@@ -891,7 +985,7 @@ class Application:
         # メモリ上で直接上書き座標を生成・反映
         success = self.build_landmark_overrides_from_points(
             rinkaku_points,
-            self.rinkaku_target_landmarks_right
+            target_landmarks
         )
         self.landmark_overrides_loaded = success
         
@@ -969,6 +1063,9 @@ class Application:
     def set_3D_point_2(self, point_3D, point_list):
         self.point_3D2 = point_3D
         self.point_list2 = point_list 
+    def set_3D_point_3(self, point_3D, point_list):
+        self.point_3D3 = point_3D
+        self.point_list3 = point_list
 
     # ３次元モデルをセット
     def set_mqo_model(self, model):
@@ -994,7 +1091,7 @@ class Application:
         print(f"モデル描画 [N]:           {'ON' if self.draw_model_flag else 'OFF'}")
         
         
-        point_mode_names = {0: "全点", 1: "上部", 2: "選択"}
+        point_mode_names = {0: "全点", 1: "上部", 2: "選択", 3: "追加"}
         point_mode = point_mode_names.get(self.detect_stable, "不明")
         print(f"対応点モード [P]:         {point_mode}")
         
@@ -1080,7 +1177,7 @@ class Application:
         y_offset += line_height
         
         # 対応点モード (Pキー)
-        point_mode_names = {0: "All Points", 1: "Upper Points", 2: "Selected Points"}
+        point_mode_names = {0: "All Points", 1: "Right Points", 2: "Left Points", 3: "Eye Points"}
         point_mode = point_mode_names.get(self.detect_stable, "Unknown")
         cv2.putText(image, f"[P] Point Mode: {point_mode}", (text_x, y_offset),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, (200, 200, 200), 1)

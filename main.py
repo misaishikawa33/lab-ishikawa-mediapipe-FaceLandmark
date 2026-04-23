@@ -146,6 +146,7 @@ class Main:
         self.app.set_3D_point(mqo.data, mqo.datalist)
         self.app.set_3D_point_1(mqo.data1, mqo.datalist1) # 一部の特徴点を使用
         self.app.set_3D_point_2(mqo.data2, mqo.datalist2) # 一部の特徴点を使用
+        self.app.set_3D_point_3(mqo.data3, mqo.datalist3) # 一部の特徴点を使用
        
         # モデルを生成
         self.display(model_filename)
