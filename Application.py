@@ -74,6 +74,8 @@ class Application:
         self.use_realtime_rinkaku_override = True          # YOLO補正の有効/無効
         self.landmark_update_interval = 5                  # Nフレームに1回だけYOLO推論を実行
         self.realtime_frame_count = 0
+        self.use_yolo_outlier_filter = True               # 端寄りYOLO結果を無視する
+        self.yolo_border_margin_ratio = 0.05              # 画面端判定の余白(画像短辺に対する比率)
         
         # デバッグオプション
         self.export_rinkaku_csv = False                    # True=デバッグ用にCSV出力, False=メモリのみで処理（推奨）
@@ -763,6 +765,36 @@ class Application:
             return 1
         return 3
 
+    def is_yolo_keypoints_reliable(self, keypoints, rinkaku_mode):
+        """
+        YOLOの輪郭特徴点が画面端に寄りすぎていないかを判定する。
+        端点や顎が画面端に接している場合は、上書きに使わない。
+        """
+        if not keypoints:
+            return False
+
+        mode_config = self.rinkaku_mode_config.get(rinkaku_mode, self.rinkaku_mode_config['right'])
+        border_margin = max(1, int(min(self.width, self.height) * self.yolo_border_margin_ratio))
+
+        required_keys = ['chin', mode_config['start_key']]
+        if mode_config.get('avoid_key'):
+            required_keys.append(mode_config['avoid_key'])
+
+        for key in required_keys:
+            point = keypoints.get(key)
+            if point is None:
+                return False
+
+            x, y = point
+            if x <= border_margin or x >= (self.width - border_margin):
+                print(f"YOLO結果を破棄: {key} が画面端に近すぎます ({x:.1f}, {y:.1f})")
+                return False
+            if y <= border_margin or y >= (self.height - border_margin):
+                print(f"YOLO結果を破棄: {key} が画面端に近すぎます ({x:.1f}, {y:.1f})")
+                return False
+
+        return True
+
     def find_mask_keypoints(self, contour):
         """
         マスク輪郭から顎/鼻/左右端を抽出する。
@@ -980,6 +1012,11 @@ class Application:
         target_landmarks = mode_config['target_landmarks']
 
         if contour_start_point is None:
+            self.latest_yolo_keypoints = keypoints
+            self.latest_rinkaku_points = []
+            return False
+
+        if self.use_yolo_outlier_filter and not self.is_yolo_keypoints_reliable(keypoints, rinkaku_mode):
             self.latest_yolo_keypoints = keypoints
             self.latest_rinkaku_points = []
             return False
