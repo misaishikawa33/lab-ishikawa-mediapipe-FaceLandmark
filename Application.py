@@ -49,6 +49,10 @@ class Application:
 
         # モデル描画制御
         self.draw_model_flag = True  # モデル描画のON/OFF
+        # アルファ処理で見た目が小さくなる分の描画補正（描画時のみ拡大）
+        self.use_alpha_size_compensation = True
+        self.alpha_compensation_scale_x = 1.06
+        self.alpha_compensation_scale_y = 1.06
         
         # ランドマーク位置調整機能
         self.adjust_landmarks = False
@@ -454,6 +458,11 @@ class Application:
         model_scale_X = 1.0 * scale_x
         model_scale_Y = 1.0 * scale_y
         model_scale_Z = 1.0 
+
+        # PnPには影響させず、描画モデルのみをわずかに拡大してアルファ透過分を補正する
+        if self.use_alpha_size_compensation:
+            model_scale_X *= self.alpha_compensation_scale_x
+            model_scale_Y *= self.alpha_compensation_scale_y
     
         # 世界座標系の描画
         if self.draw_axis:
