@@ -138,9 +138,9 @@ class ContourAlpha:
             for i in range(self.w):
                 if len(self.alpha_area[i]) != 0 and min(self.alpha_area[i]) < j and max(self.alpha_area[i]) > j and img[j, i, 3] == 255:
                     img[j, i, 3] = img[j, i-1, 3]
-        #断面のアルファを変更(コメントアウト: アルファ処理のみの画像を生成)
-        for x in self.x_range:
-            self.cross_alpha_changer(x, img)
+        # #断面のアルファを変更(コメントアウト: アルファ処理のみの画像を生成)
+        # for x in self.x_range:
+        #     self.cross_alpha_changer(x, img)
 
         # アルファ処理後のテクスチャ出力
         if save_org:

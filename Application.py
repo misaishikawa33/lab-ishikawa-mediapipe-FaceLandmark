@@ -51,8 +51,8 @@ class Application:
         self.draw_model_flag = True  # モデル描画のON/OFF
         # アルファ処理で見た目が小さくなる分の描画補正（描画時のみ拡大）
         self.use_alpha_size_compensation = True
-        self.alpha_compensation_scale_x = 1.06
-        self.alpha_compensation_scale_y = 1.06
+        self.alpha_compensation_scale_x = 1.05
+        self.alpha_compensation_scale_y = 1.05
         
         # ランドマーク位置調整機能
         self.adjust_landmarks = False
@@ -75,7 +75,7 @@ class Application:
         
         # YOLO輪郭によるリアルタイム補正（メモリ上で直接処理）
         # 設定項目：
-        self.use_realtime_rinkaku_override = True          # YOLO補正の有効/無効
+        self.use_realtime_rinkaku_override = True         # YOLO補正の有効/無効
         self.landmark_update_interval = 5                  # Nフレームに1回だけYOLO推論を実行
         self.realtime_frame_count = 0
         self.use_yolo_outlier_filter = True               # 端寄りYOLO結果を無視する
