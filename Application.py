@@ -29,7 +29,7 @@ class Application:
     # @param width    : 画像の横サイズ
     # @param height   : 画像の縦サイズ
     #
-    def __init__(self, title, width, height, use_api, draw_landmark, use_facedetector=False):
+    def __init__(self, title, width, height, use_api, draw_landmark, use_facedetector=False, movie_path=None):
         self.width   = width
         self.height  = height
         self.channel = 3
@@ -75,7 +75,7 @@ class Application:
         
         # YOLO輪郭によるリアルタイム補正（メモリ上で直接処理）
         # 設定項目：
-        self.use_realtime_rinkaku_override = True         # YOLO補正の有効/無効
+        self.use_realtime_rinkaku_override = False         # YOLO補正の有効/無効
         self.landmark_update_interval = 5                  # Nフレームに1回だけYOLO推論を実行
         self.realtime_frame_count = 0
         self.use_yolo_outlier_filter = True               # 端寄りYOLO結果を無視する
@@ -124,16 +124,42 @@ class Application:
         # USBCameraクラスのインスタンス生成
         #
         self.camera = cam.USBCamera(width, height, use_api)
+        
+        # デフォルトはUSBカメラだが、movie_path が指定されていれば動画ファイルを開く
+        if movie_path is not None:
+            # 既に開かれているカメラを閉じ、ビデオモードで再オープンする
+            try:
+                self.camera.Close()
+            except Exception:
+                pass
+            # 切り替えフラグを設定して動画ファイルを開く
+            self.camera.inputMode = cam.USBCamera.INPUT_VIDEO
+            opened = self.camera.Open(width, height, movie_path, use_api)
+            if opened:
+                print(f"movie mode enabled: {movie_path}")
+            else:
+                print(f"failed to open movie: {movie_path}, falling back to camera")
 
         #
         # GLウィンドウの設定
         # GLウィンドウクラスのインスタンス生成
         #
-        self.glwindow = GLWindow.GLWindow(
-            title, 
-            width, height, 
-            self.display_func, 
-            self.keyboard_func)
+        #
+        # GLウィンドウの設定
+        # GLウィンドウクラスのインスタンス生成
+        #
+        self.glwindow = None
+        try:
+            self.glwindow = GLWindow.GLWindow(
+                title, 
+                width, height, 
+                self.display_func, 
+                self.keyboard_func)
+        except RuntimeError as e:
+            print(f"Warning: GLWindow initialization failed: {e}")
+            print("Continuing in headless mode...")
+            if movie_path is not None:
+                print("Processing video in headless mode without display")
 
         #
         # カメラの内部パラメータ(usbカメラ)
@@ -203,6 +229,10 @@ class Application:
         # === カメラ映像処理（リアルタイム） ===
         success, self.image = self.camera.CaptureImage()
         if not success:
+            if self.camera.inputMode == cam.USBCamera.INPUT_VIDEO:
+                if self.glwindow is not None:
+                    glfw.set_window_should_close(self.glwindow.window, True)
+                return
             print("error : video error")
             return
         # USBCameraが既にRGB変換済みのため、追加変換は不要

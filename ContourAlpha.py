@@ -72,8 +72,10 @@ class ContourAlpha:
         self.face_contour_indices = [234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152, 377, 400, 378, 379, 365, 397, 288, 361, 323, 454]
         contour_indices_num = len(self.face_contour_indices)
         if use_cut:
-            # 顔の下半分を切り取った場合の断面に対応するランドマークインデックス
-            self.cross_section_indices = [227, 116, 111, 31, 228, 229, 230, 231, 232, 233, 244, 245, 188, 196, 197, 419, 412, 465, 464, 453, 452, 451, 450, 449, 448, 261, 340, 345, 447]
+            # 顔の下半分を切り取った場合の断面に対応するランドマークインデックス(ishikawa)
+            self.cross_section_indices = [6, 31, 111, 116, 122, 227, 228, 229, 230, 231,
+    232, 233, 234, 244, 245, 261, 340, 345, 351,
+    447, 448, 449, 450, 451, 452, 453, 454, 464, 465]
         else:
             # 顔の上半分の輪郭に対応するランドマークインデックス
             self.cross_section_indices = [234, 127, 162, 21, 54, 103, 67, 109, 10, 338, 297, 332, 284, 251, 389, 356, 454]
@@ -138,9 +140,9 @@ class ContourAlpha:
             for i in range(self.w):
                 if len(self.alpha_area[i]) != 0 and min(self.alpha_area[i]) < j and max(self.alpha_area[i]) > j and img[j, i, 3] == 255:
                     img[j, i, 3] = img[j, i-1, 3]
-        # #断面のアルファを変更(コメントアウト: アルファ処理のみの画像を生成)
-        # for x in self.x_range:
-        #     self.cross_alpha_changer(x, img)
+        #断面のアルファを変更(コメントアウト: アルファ処理のみの画像を生成)
+        for x in self.x_range:
+            self.cross_alpha_changer(x, img)
 
         # アルファ処理後のテクスチャ出力
         if save_org:

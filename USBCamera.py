@@ -54,7 +54,7 @@ class USBCamera:
             return self.OpenCamera(width, height, use_api)
         else:
             print("video")
-            return self.OpenVideo (name, use_api)
+            return self.OpenVideo(width, height, name, use_api)
 
     #
     # カメラをオープンする関数
@@ -109,7 +109,7 @@ class USBCamera:
     #
     # @param name : 動画ファイル名
     #
-    def OpenVideo(self, name, use_api):
+    def OpenVideo(self, width, height, name, use_api):
         self.inputMode = self.INPUT_VIDEO
         self.capture = cv2.VideoCapture(name, use_api)
         if self.capture.isOpened() is False:
@@ -117,8 +117,14 @@ class USBCamera:
             print(message)
             return False
 
-        self.width  = self.capture.get(cv2.CAP_PROP_FRAME_WIDTH)
-        self.height = self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT)
+        # 動画入力でも描画/推定側の解像度を固定して扱う
+        self.width = int(width)
+        self.height = int(height)
+        self.nchannels = 3
+
+        # 動画ファイルは通常ミラー反転しない
+        self.hflip = False
+        self.vflip = False
 
         return True
 
@@ -128,10 +134,16 @@ class USBCamera:
     def CaptureImage(self):
         ret, self.image = self.capture.read()
         if not ret:
-            print("カメラの読み取りに失敗しました。")
+            if self.inputMode == self.INPUT_VIDEO:
+                print("動画の終端に達しました。処理を終了します。")
+            else:
+                print("カメラの読み取りに失敗しました。")
             return ret, self.image
         if self.image is not None:
             self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
+            # 読み込み元の解像度が異なる場合でも、内部処理サイズを一定に保つ
+            if self.image.shape[1] != int(self.width) or self.image.shape[0] != int(self.height):
+                self.image = cv2.resize(self.image, (int(self.width), int(self.height)))
         #
         # カメラ画像の回転
         #

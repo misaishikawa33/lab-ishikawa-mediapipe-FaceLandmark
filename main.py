@@ -23,13 +23,24 @@ import time
 # メインクラス
 #        
 class Main:
+
+    def ask_alpha_dialog(self):
+        layout_alpha = [[sg.Text("テクスチャにアルファ処理を行いますか？")],
+                        [sg.Button('Yes'), sg.Button('No')]]
+        window_alpha = sg.Window('アルファ処理確認', layout_alpha)
+        event_alpha, values_alpha = window_alpha.read()
+        window_alpha.close()
+
+        if event_alpha in (None, 'Cancel', 'No'):
+            return False
+        return True
     
     #
     # コンストラクタ
     # (@param kwargs : image = "image_filename"
     #                  texture = "texture_filename")
     #
-    def __init__(self, texture, draw_landmark, use_facelandmark=False, use_alpha=False):
+    def __init__(self, texture, draw_landmark, use_facelandmark=False, use_alpha=False, movie_path=None):
         
         if texture is not None:
             self.take_texture = False
@@ -56,7 +67,7 @@ class Main:
         self.app = Application.Application(
             title, 
             width, height, use_api,
-            draw_landmark, use_facelandmark)
+            draw_landmark, use_facelandmark, movie_path=movie_path)
         
         #
         # テクスチャ撮影
@@ -106,17 +117,7 @@ class Main:
                 # 画像撮影後、アルファ処理を行うか確認（引数で指定されていない場合のみ）
                 if not use_alpha:  # コマンドライン引数でuse_alphaが指定されていない場合
                     self.window.close()
-                    layout_alpha = [[sg.Text("テクスチャにアルファ処理を行いますか？")]
-                                   ,[sg.Button('Yes'), sg.Button('No')]]
-                    window_alpha = sg.Window('アルファ処理確認', layout_alpha)
-                    event_alpha, values_alpha = window_alpha.read()
-                    
-                    if event_alpha in (None, 'Cancel', 'No'):
-                        self.use_alpha = False
-                    elif event_alpha == "Yes":
-                        self.use_alpha = True
-                    
-                    window_alpha.close()
+                    self.use_alpha = self.ask_alpha_dialog()
                 else:
                     # コマンドライン引数で指定されている場合はそのまま使用
                     self.use_alpha = use_alpha
@@ -129,6 +130,10 @@ class Main:
             self.app.camera.Close()
             # ウィンドウクローズ
             self.window.close()
+
+        # 画像ファイルを直接指定した場合も、アルファ処理の有無を選べるようにする
+        if self.take_texture == False and not use_alpha:
+            self.use_alpha = self.ask_alpha_dialog()
         
         #
         # モデル読み込み
@@ -203,9 +208,10 @@ if __name__ == '__main__':
         add_help = True,
     )
     parser.add_argument("--texture", default=None, help = "texture_filename")
+    parser.add_argument('--movie', default=None, help = "path to video file for movie mode")
     parser.add_argument('--draw_landmark', action='store_true', help = "draw landmark")
     parser.add_argument('--use_facelandmark', action='store_true', help = "enable FaceLandmark processing")
     parser.add_argument('--use_alpha', action='store_true', help = "enable alpha channel processing for texture")
     args = parser.parse_args()
     
-    Main(args.texture, args.draw_landmark, args.use_facelandmark, args.use_alpha)
+    Main(args.texture, args.draw_landmark, args.use_facelandmark, args.use_alpha, movie_path=args.movie)

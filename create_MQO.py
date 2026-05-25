@@ -4,6 +4,7 @@ import numpy as np
 import cv2
 import mediapipe as mp
 import datetime
+import os
 
 #
 # ３次元モデル生成クラス
@@ -37,12 +38,38 @@ class CreateMQO:
         if self.use_alpha:
             print("アルファ処理を開始します...")
             from ContourAlpha import ContourAlpha
-            import os
-            texture_path = f"mqodata/model/{texture}"
+
+            # texture の指定形式（nomask.jpg / mqodata/nomask.jpg など）に依存せず実ファイルを解決する
+            alpha_candidates = [
+                texture,
+                f"mqodata/model/{texture}",
+                f"mqodata/{texture}",
+            ]
+            if texture.startswith("mqodata/"):
+                base_name = texture[8:]
+                alpha_candidates.extend([
+                    base_name,
+                    f"mqodata/model/{base_name}",
+                    f"mqodata/{base_name}",
+                ])
+
+            texture_path = None
+            for candidate in alpha_candidates:
+                if os.path.exists(candidate):
+                    texture_path = candidate
+                    break
+
+            if texture_path is None:
+                raise FileNotFoundError(
+                    f"アルファ処理対象のテクスチャが見つかりません: {texture}\n"
+                    f"試行したパス: {alpha_candidates}"
+                )
+
             # simple_mode=Trueで可視化出力なし、save_org=Trueでアルファ処理後の画像を出力
             ContourAlpha(texture_path, use_cut=self.use_cut, save_org=True, use_spline=False, simple_mode=True)
-            # JPEGからPNGに変換された場合、テクスチャファイル名を更新
-            base_name = os.path.splitext(texture)[0]
+
+            # アルファ処理後は texture_path と同じ場所に .png が保存される
+            base_name = os.path.splitext(texture_path)[0]
             texture = base_name + '.png'
             print(f"アルファ処理が完了しました。使用するテクスチャ: {texture}")
         
@@ -101,12 +128,19 @@ class CreateMQO:
         self.outputs.append('\t}\n')
         self.outputs.append('}\n')
 
+        # MQOファイルは mqodata/model/ に保存されるので、
+        # テクスチャパスは相対パスに変換する必要がある
+        relative_texture_path = texture_filename
+        if texture_filename.startswith("mqodata/"):
+            base_name = texture_filename[8:]  # "mqodata/" の後の部分
+            relative_texture_path = f"../{base_name}"
+        
         self.outputs.append('Material 1 {\n')
         
         if self.masked_face == True:
-            self.outputs.append('\t"mat1" shader(3) col(0.176 1.000 0.000 0.500) dif(0.800) amb(0.600) emi(0.000) spc(0.000) power(5.00) tex("%s")\n' % texture_filename)
+            self.outputs.append('\t"mat1" shader(3) col(0.176 1.000 0.000 0.500) dif(0.800) amb(0.600) emi(0.000) spc(0.000) power(5.00) tex("%s")\n' % relative_texture_path)
         else:
-            self.outputs.append('\t"mat1" shader(3) col(0.176 1.000 0.000 0.500) dif(0.800) amb(0.600) emi(0.000) spc(0.000) power(5.00) tex("%s")\n' % texture_filename)
+            self.outputs.append('\t"mat1" shader(3) col(0.176 1.000 0.000 0.500) dif(0.800) amb(0.600) emi(0.000) spc(0.000) power(5.00) tex("%s")\n' % relative_texture_path)
         self.outputs.append('}\n')
 
         self.outputs.append('Object "obj" {\n')
@@ -166,19 +200,35 @@ class CreateMQO:
             color=(0, 0, 255))
 
         # テクスチャファイル読み込み
-        # アルファ処理後はmodel/ディレクトリに保存されているので、両方のパスを試す
+        # 複数のパスパターンを試す
         import os
-        texture_path_model = f"mqodata/model/{texture_filename}"
-        texture_path_base = f"mqodata/{texture_filename}"
+        candidates = [
+            texture_filename,  # そのままのパス
+            f"mqodata/model/{texture_filename}",  # model/ディレクトリ内
+            f"mqodata/{texture_filename}",  # mqodata/直下
+        ]
         
-        if os.path.exists(texture_path_model):
-            img = cv2.imread(texture_path_model)
-            print(f"テクスチャを読み込みました(アルファ処理あり): {texture_path_model}")
-        elif os.path.exists(texture_path_base):
-            img = cv2.imread(texture_path_base)
-            print(f"テクスチャを読み込みました（アルファ処理なし）: {texture_path_base}")
-        else:
-            raise FileNotFoundError(f"テクスチャファイルが見つかりません: {texture_filename}")
+        # 最初のスラッシュを除いたバージョンも試す
+        if texture_filename.startswith("mqodata/"):
+            base_name = texture_filename[8:]  # "mqodata/" の後の部分
+            candidates.extend([
+                base_name,
+                f"mqodata/model/{base_name}",
+                f"mqodata/{base_name}",
+            ])
+        
+        img = None
+        used_path = None
+        for path in candidates:
+            if os.path.exists(path):
+                img = cv2.imread(path)
+                if img is not None:
+                    used_path = path
+                    print(f"テクスチャを読み込みました: {path}")
+                    break
+        
+        if img is None:
+            raise FileNotFoundError(f"テクスチャファイルが見つかりません: {texture_filename}\n試行したパス: {candidates}")
         
         if img is None:
             raise ValueError(f"画像の読み込みに失敗しました: {texture_filename}")
@@ -377,7 +427,7 @@ class CreateMQO:
         
 
         # マスクのモデルを作成する際に用いる対応点
-        # 輪郭部分を含む全ランドマーク（昇順）
+        # 旧設定（コメントアウトして保持）
         self.mask_list = [
             0, 1, 2, 3, 4, 5, 6, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20,31, 32, 36, 37, 38, 39, 40,
             41, 42, 43, 44, 45, 47, 48, 49, 50, 51, 57, 58, 59, 60, 61, 62, 64, 72, 73, 74, 75, 76,
@@ -393,8 +443,27 @@ class CreateMQO:
             347, 348, 349, 350, 351, 352, 354, 355, 357, 358, 360, 361, 363, 364, 365, 366, 367, 369, 370, 371, 375, 376,
             377, 378, 379, 391, 392, 393, 394, 395, 396, 397, 399, 400, 401, 402, 403, 404, 405, 406, 407, 408,
             409, 410, 411, 412, 415, 416, 418, 419, 420, 421, 422, 423, 424, 425, 426, 427, 428, 429, 430, 431, 432,
-            433, 434, 435, 436, 437, 438, 439, 440, 447, 448, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 465
+            433, 434, 435, 436, 437, 438, 439, 440, 447, 448, 449, 450, 451, 452, 453, 454, 455, 456, 457, 458, 459, 460, 461, 462, 465,261,245,464,244
         ]
+
+        # # 新設定
+        # self.mask_list = [
+        #     0, 1, 2, 3, 4, 5, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 32, 36, 37, 38, 39, 40,
+        #     41, 42, 43, 44, 45, 48, 49, 50, 51, 57, 59, 60, 61, 62, 64, 72, 73, 74, 75, 76,
+        #     77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 94, 95, 96, 97,
+        #     98, 99, 100, 101, 102, 106, 115, 123, 125, 126, 129, 131, 134, 135, 136, 137, 138,
+        #     140, 141, 142, 146, 147, 148, 149, 150, 152, 164, 165, 166, 167, 169, 170, 171, 175,
+        #     176, 177, 178, 179, 180, 181, 182, 183, 184, 185, 186, 187, 191, 192, 194, 195, 198,
+        #     199, 200, 201, 202, 203, 204, 205, 206, 207, 208, 209, 210, 211, 212, 213, 214, 215,
+        #     216, 218, 219, 220, 235, 236, 237, 238, 239, 240, 241, 242, 248, 250, 262, 266, 267,
+        #     268, 269, 270, 271, 272, 273, 274, 275, 278, 279, 280, 281, 287, 289, 290, 291, 292,
+        #     294, 302, 303, 304, 305, 306, 307, 308, 309, 310, 311, 312, 313, 314, 315, 316, 317,
+        #     318, 319, 320, 321, 322, 324, 325, 326, 327, 328, 329, 330, 331, 335, 344, 352, 354,
+        #     355, 358, 360, 363, 364, 365, 366, 367, 369, 370, 371, 375, 376, 377, 378, 379, 391,
+        #     392, 393, 394, 395, 396, 400, 401, 402, 403, 404, 405, 406, 407, 408, 409, 410, 411,
+        #     415, 416, 418, 420, 421, 422, 423, 424, 425, 426, 427, 428, 429, 430, 431, 432, 433,
+        #     434, 435, 436, 438, 439, 440, 455, 456, 457, 458, 459, 460, 461, 462
+        # ]
         
         for j in range(cnt):
             datalist.append(j)
