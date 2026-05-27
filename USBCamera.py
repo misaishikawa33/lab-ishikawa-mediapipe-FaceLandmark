@@ -122,9 +122,16 @@ class USBCamera:
         self.height = int(height)
         self.nchannels = 3
 
-        # 動画ファイルは通常ミラー反転しない
-        self.hflip = False
-        self.vflip = False
+        # 実際の動画ファイルの解像度を取得して、期待解像度と異なる場合はエラーで強制終了する
+        src_w = int(self.capture.get(cv2.CAP_PROP_FRAME_WIDTH))
+        src_h = int(self.capture.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        if src_w != self.width or src_h != self.height:
+            raise RuntimeError(
+                f"入力動画の解像度が期待値と異なります: {src_w}x{src_h} (期待: {self.width}x{self.height})。"
+                " 640x480 の動画を使用してください。"
+            )
+
+        # 動画入力でも反転設定はそのまま使用する（カメラ入力と同等）
 
         return True
 
@@ -141,9 +148,11 @@ class USBCamera:
             return ret, self.image
         if self.image is not None:
             self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
-            # 読み込み元の解像度が異なる場合でも、内部処理サイズを一定に保つ
+            # リサイズ処理は行わない。入力フレームが期待解像度と異なる場合は致命的とする。
             if self.image.shape[1] != int(self.width) or self.image.shape[0] != int(self.height):
-                self.image = cv2.resize(self.image, (int(self.width), int(self.height)))
+                raise RuntimeError(
+                    f"エラー: 入力フレームの解像度が期待値と異なります: {self.image.shape[1]}x{self.image.shape[0]} (期待: {self.width}x{self.height})。処理を中断します。"
+                )
         #
         # カメラ画像の回転
         #
