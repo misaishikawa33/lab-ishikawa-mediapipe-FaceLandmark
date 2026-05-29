@@ -15,42 +15,11 @@ conda env create -f environment.facelandmark310.yml
 conda activate facelandmark310
 ```
 
-`main.py` は OpenGL と user site-package の影響を受けやすいため、`facelandmark310` 環境に activate hook を設定して実行する前提です。現在のセットアップでは `conda activate facelandmark310` の後に `python main.py` を実行します。
-
 ## 実行方法(main)
 ```bash
 conda activate facelandmark310
 python main.py [--texture nomask.jpg] [--draw_landmark]
 ```
-
-### 引数
-  - texture	    使用するテクスチャ画像のファイルパスを指定します（省略可）
-  - draw_landmark	ランドマークを描画する場合に指定します（省略可）
-  - use_facedetector Face Detector機能を起動時にONにします（省略可）
-
-### コントロールキー
- - **n**: モデル描画のON/OFF（3Dモデルの表示・非表示）
- - **p**: 対応点モードを変更（All Points → Upper Points → Selected Points）
- - **t**: ステータス表示モードの切り替え（コンパクト表示 → 詳細表示 → コンソール表示のみ）
- 
-### 画面表示
-実行中、画面右上に現在の機能状態が表示されます:
-- **[N] Model Draw**: モデル描画のON/OFF（緑=有効、灰色=無効）
-- **[P] Point Mode**: 現在の対応点モード（All Points/Upper Points/Selected Points）
-- **FL Scale**: Face Landmarkerスケール係数と調整モード（Manual/Auto）
-
-
-#### モデル描画制御（**N**キー）
-3Dモデルの表示・非表示を制御:
-- OFF時は姿勢推定のみ実行し、モデルは表示しない
-- ランドマーク表示のみ確認したい場合や処理負荷軽減に有効
-
-#### 姿勢推定の優先順位
-複数の姿勢推定機能が有効な場合の実行優先順位:
-1. **姿勢比較モード**（**C**キー）
-2. **Face Landmarker PnP姿勢推定**（**G**キー）
-3. **Face Landmarker直接姿勢推定**（**B**キー）
-4. **従来のPnP方式**（デフォルト）
 
 ## 実行方法(create_MQO)
 ```bash
@@ -58,8 +27,34 @@ conda activate facelandmark310
 python create_MQO.py [model/nomask.jpg]
 ```
 
-### 引数
-  - 画像の名前は適宜変更してください
+## 引数
+  - texture	    使用するテクスチャ画像のファイルパスを指定します（省略可）
+  - use_facedetector Face Detector機能を起動時にONにします（省略可）
+  - --movie :動画を入力とする。例;mqodata/input/video/mask_test4.mp4
+  - --record:動画を自動保存
+  - --record_format mp4:保存する動画の形式を指定(mp4,avi)
+  ```bash
+  python main.py --movie mqodata/input/video/mask_test4.mp4 --texture mqodata/nomasktest4.jpg --record --record_format mp4
+   ```
+   
+
+
+## コントロールキー
+ - **n**: モデル描画のON/OFF（3Dモデルの表示・非表示）
+ - **p**: 対応点モードを変更（All Points → Upper Points → Selected Points）
+ - **t**: ステータス表示モードの切り替え（コンパクト表示 → 詳細表示 → コンソール表示のみ）
+ 
+## 画面表示
+実行中、画面右上に現在の機能状態が表示されます:
+- **[N] Model Draw**: モデル描画のON/OFF（緑=有効、灰色=無効）
+- **[P] Point Mode**: 現在の対応点モード
+
+
+### モデル描画制御（**N**キー）
+3Dモデルの表示・非表示を制御:
+- OFF時は姿勢推定のみ実行し、モデルは表示しない
+- ランドマーク表示のみ確認したい場合や処理負荷軽減に有効
+
 
 ## 動作環境
 - OS: Ubuntu 22.04 系 / X11 実行
@@ -77,10 +72,6 @@ python create_MQO.py [model/nomask.jpg]
 - ultralytics==8.3.203
 - torch==2.8.0
 - torchvision==0.23.0
-
-## 必要なモデルファイル
-- **face_landmarker.task**: MediaPipe Face Landmarker用モデルファイル（プロジェクトルートに配置）
-  - 自動ダウンロードスクリプト: `python3 download_model.py`
 
 ## ファイル構成
 

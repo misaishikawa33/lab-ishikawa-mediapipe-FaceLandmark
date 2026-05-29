@@ -29,7 +29,7 @@ class Application:
     # @param width    : 画像の横サイズ
     # @param height   : 画像の縦サイズ
     #
-    def __init__(self, title, width, height, use_api, draw_landmark, use_facedetector=False, movie_path=None):
+    def __init__(self, title, width, height, use_api, draw_landmark, use_facedetector=False, movie_path=None, record=False, record_format='mp4'):
         self.width   = width
         self.height  = height
         self.channel = 3
@@ -51,8 +51,8 @@ class Application:
         self.draw_model_flag = True  # モデル描画のON/OFF
         # アルファ処理で見た目が小さくなる分の描画補正（描画時のみ拡大）
         self.use_alpha_size_compensation = True
-        self.alpha_compensation_scale_x = 1.05
-        self.alpha_compensation_scale_y = 1.05
+        self.alpha_compensation_scale_x = 1.03
+        self.alpha_compensation_scale_y = 1.03
         
         # ランドマーク位置調整機能
         self.adjust_landmarks = False
@@ -67,6 +67,10 @@ class Application:
         # 録画用変数
         self.use_record = False # 初期値はFalse
         self.video = None
+        self.record_requested = record
+        self.record_format = record_format
+        self.record_output_dir = 'output/videos'
+        self.record_output_path = None
 
         # ランドマーク座標の手動上書き（ピクセル指定）
         # 形式: {ランドマーク番号: (x_px, y_px)}
@@ -75,7 +79,7 @@ class Application:
         
         # YOLO輪郭によるリアルタイム補正（メモリ上で直接処理）
         # 設定項目：
-        self.use_realtime_rinkaku_override = True         # YOLO補正の有効/無効
+        self.use_realtime_rinkaku_override = True       # YOLO補正の有効/無効
         self.landmark_update_interval = 5                  # Nフレームに1回だけYOLO推論を実行
         self.realtime_frame_count = 0
         self.use_yolo_outlier_filter = True               # 端寄りYOLO結果を無視する
@@ -560,7 +564,7 @@ class Application:
                 self.count_rec += 1
             else:
                 print("録画を終了します")
-                self.use_record = False
+                self.stop_recording()
         
         # Pで対応点を変更        
         if action == glfw.PRESS and key == glfw.KEY_P:
@@ -674,11 +678,36 @@ class Application:
     # 画面録画を保存する関数
     #
     def save_record(self):
+        import os
+
         today = str(datetime.date.today()).replace('-','')
-        filename = 'output/videos/video_{}-{}.mp4'.format(today, self.count_rec)
-        video = self.camera.SaveRecord(filename)
+        os.makedirs(self.record_output_dir, exist_ok=True)
+
+        ext = self.record_format.lower()
+        if ext not in ('mp4', 'avi'):
+            ext = 'mp4'
+
+        if ext == 'mp4':
+            fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
+        else:
+            fourcc = cv2.VideoWriter_fourcc('X', 'V', 'I', 'D')
+
+        filename = os.path.join(self.record_output_dir, f'video_{today}-{self.count_rec}.{ext}')
+        fps = int(self.camera.capture.get(cv2.CAP_PROP_FPS))
+        if fps <= 0:
+            fps = 30
+        video = cv2.VideoWriter(filename, fourcc, fps, (self.width, self.height))
+        self.record_output_path = filename
         print("録画を開始します..." + filename)
         return video
+
+    def stop_recording(self):
+        if self.video is not None:
+            self.video.release()
+            self.video = None
+        if self.use_record:
+            print(f"録画を終了しました: {self.record_output_path}")
+        self.use_record = False
     
     #
     # mediapipeで検出した顔のランドマーク座標を出力する関数

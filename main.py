@@ -40,7 +40,7 @@ class Main:
     # (@param kwargs : image = "image_filename"
     #                  texture = "texture_filename")
     #
-    def __init__(self, texture, draw_landmark, use_facelandmark=False, use_alpha=False, movie_path=None):
+    def __init__(self, texture, draw_landmark, use_facelandmark=False, use_alpha=False, movie_path=None, record=False, record_format='mp4'):
         
         if texture is not None:
             self.take_texture = False
@@ -67,7 +67,8 @@ class Main:
         self.app = Application.Application(
             title, 
             width, height, use_api,
-            draw_landmark, use_facelandmark, movie_path=movie_path)
+            draw_landmark, use_facelandmark, movie_path=movie_path,
+            record=record, record_format=record_format)
         
         #
         # テクスチャ撮影
@@ -155,6 +156,11 @@ class Main:
        
         # モデルを生成
         self.display(model_filename)
+
+        if record and movie_path is not None:
+            self.app.use_record = True
+            self.app.video = self.app.save_record()
+            self.app.count_rec += 1
         
         if self.take_texture:
             # アプリケーションのカメラオープン
@@ -170,6 +176,8 @@ class Main:
             self.app.display_func(self.app.glwindow.window) 
             # イベントを待つ
             glfw.poll_events()
+
+        self.app.stop_recording()
         
         # glfwの終了処理
         glfw.terminate()
@@ -212,6 +220,8 @@ if __name__ == '__main__':
     parser.add_argument('--draw_landmark', action='store_true', help = "draw landmark")
     parser.add_argument('--use_facelandmark', action='store_true', help = "enable FaceLandmark processing")
     parser.add_argument('--use_alpha', action='store_true', help = "enable alpha channel processing for texture")
+    parser.add_argument('--record', action='store_true', help = "auto record output video when using --movie")
+    parser.add_argument('--record_format', default='mp4', choices=['mp4', 'avi'], help = "output video format")
     args = parser.parse_args()
     
-    Main(args.texture, args.draw_landmark, args.use_facelandmark, args.use_alpha, movie_path=args.movie)
+    Main(args.texture, args.draw_landmark, args.use_facelandmark, args.use_alpha, movie_path=args.movie, record=args.record, record_format=args.record_format)
