@@ -53,19 +53,12 @@ class Application:
         # 入力画像の肌色基準ランドマーク群を基準にモデルテクスチャの色味・コントラストを合わせる
         self.use_model_color_match = True
         self.skin_landmarks = [10, 151, 9, 8, 168]
-        self.color_match_patch_radius = 5
+        self.color_match_patch_radius = 3
         self.model_reference_rgb = None
-        self.model_reference_luma_std = 1.0
         self.smoothed_target_rgb = None
-        self.smoothed_contrast = 1.0
         self.color_match_smoothing = 0.85
-        self.color_match_min_contrast = 1.0
-        self.color_match_max_contrast = 1.25
         self.color_match_update_yaw_limit = 15.0
-        self.draw_skin_landmarks = True
-        
-        # ランドマーク位置調整機能
-        self.adjust_landmarks = False
+        self.draw_skin_landmarks = False
 
         # 顔角度（yaw, pitch, roll）
         self.angle = None
@@ -98,8 +91,8 @@ class Application:
         # デバッグオプション
         self.export_rinkaku_csv = False                    # True=デバッグ用にCSV出力, False=メモリのみで処理（推奨）
         self.rinkaku_yolo_csv_path = 'mqodata/input/yolooutput.csv'
-        self.rinkaku_target_landmarks_right = [116, 123, 187, 207, 192, 214, 170, 176, 148, 152]
-        self.rinkaku_target_landmarks_left = [345, 352, 376, 433, 367, 364, 378, 400, 377, 152]
+        self.rinkaku_target_landmarks_right = [111, 116, 123, 147, 213, 192, 138, 135, 169, 150, 149, 176, 148, 152]
+        self.rinkaku_target_landmarks_left = [340, 345, 352, 376, 411, 427, 416, 434, 364, 394, 369, 400, 377, 152]
         self.rinkaku_mode_config = {
             'right': {
                 'start_key': 'right_edge',
@@ -251,30 +244,6 @@ class Application:
             return
         # USBCameraが既にRGB変換済みのため、追加変換は不要
         self.rgb_image_for_display = self.image.copy()
-
-        
-        # # # === 静的画像処理（単一画像） ===
-        # # 画像の形式の変換なリアルタイムの場合は、USBCameraクラス内で自動的にBGR→RGB変換
-        # static_image_path = "/home/misa/lab/mediapipe/FaceLandmark/mqodata/input/maskpic/face17.jpg"
-        # bgr_image = cv2.imread(static_image_path)
-        # success = bgr_image is not None
-
-        # if not success:
-        #     print(f"error : could not load image from {static_image_path}")
-        #     return
-        
-        # # 画像サイズを640x480にリサイズ
-        # height, width = bgr_image.shape[:2]
-        # if width != 640 or height != 480:
-        #     bgr_image = cv2.resize(bgr_image, (640, 480))
-        
-        # # MediaPipe用にRGBに変換
-        # self.image = cv2.cvtColor(bgr_image, cv2.COLOR_BGR2RGB)
-        
-        # # 描画用にもRGB画像を作成（GLWindowはRGBを期待）
-        # self.rgb_image_for_display = self.image.copy()
-
-        # ###  静的画像処理（単一画像）終了 ###
     
         # 描画設定
         self.image.flags.writeable = False
@@ -308,34 +277,6 @@ class Application:
             for face_landmarks in self.face_mesh.multi_face_landmarks:
                 self.apply_manual_landmark_overrides(face_landmarks)
 
-        # # === 静的画像処理（単一画像） ===
-
-
-        # ##リアルタイル時コメントアウト開始##
-        # # # 上書き座標の生成(ishikawa0119)
-        # if not self.landmark_overrides_loaded:
-        #     self.build_landmark_overrides_from_yolo_csv(
-        #         self.rinkaku_yolo_csv_path,
-        #         self.rinkaku_target_landmarks_right
-        #     )
-        #     self.landmark_overrides_loaded = True
-
-        # # 指定ランドマークの座標を手動上書き
-        # if self.face_mesh.multi_face_landmarks:
-        #     for face_landmarks in self.face_mesh.multi_face_landmarks:
-        #         self.apply_manual_landmark_overrides(face_landmarks)
-                
-        # # # ##リアルタイル時コメントアウト終了##           
-
-        # 変更後のランドマーク152番を描画（MediaPipeの座標から取得）
-        # x = int(face_landmarks.landmark[152].x * self.width)
-        # y = int(face_landmarks.landmark[152].y * self.height)
-        # cv2.circle(self.rgb_image_for_display, (x, y), 5, (0, 0, 255), -1)  
-
-
-        #
-        # 画像の描画を実行
-        #
         self.image.flags.writeable = True
 
         # YOLO特徴点デバッグ表示（chin/right と輪郭線）
@@ -483,27 +424,6 @@ class Application:
         model_shift_Y = 0.0
         model_shift_Z = 0.0
         
-        # ランドマーク位置調整が有効な場合、モデルに平行移動を適用
-        if self.adjust_landmarks and self.alignment_info:
-            # 234(右端)と454(左端)の平均オフセットを計算
-            offset_x_234 = self.alignment_info['right_ear_target'][0] - self.alignment_info['right_face_current'][0]
-            offset_y_234 = self.alignment_info['right_ear_target'][1] - self.alignment_info['right_face_current'][1]
-            offset_x_454 = self.alignment_info['left_ear_target'][0] - self.alignment_info['left_face_current'][0]
-            offset_y_454 = self.alignment_info['left_ear_target'][1] - self.alignment_info['left_face_current'][1]
-            
-            # 平均オフセット(ピクセル単位)
-            avg_offset_x = (offset_x_234 + offset_x_454) / 2.0
-            avg_offset_y = (offset_y_234 + offset_y_454) / 2.0
-            
-            # OpenGLの座標系に変換(画像座標→正規化座標→OpenGL座標)
-            # X軸: 画像の横方向のオフセット
-            model_shift_X = avg_offset_x
-            # Y軸: 画像の縦方向のオフセット(OpenGLはY軸が反転)
-            model_shift_Y = -avg_offset_y
-            # Z軸: 変更なし
-            model_shift_Z = 0.0
-            
-            # print(f"モデル平行移動: X={model_shift_X:.1f}, Y={model_shift_Y:.1f}")
         
         # 世界座標系の描画
         if self.draw_axis:
@@ -608,15 +528,6 @@ class Application:
                 print("モデル描画を有効化しました")
             else:
                 print("モデル描画を無効化しました")
-
-        # FでYOLO補正の更新間隔を切り替え
-        if action == glfw.PRESS and key == glfw.KEY_F:
-            interval_list = [1, 5, 10, 15]
-            current_idx = 0
-            if self.landmark_update_interval in interval_list:
-                current_idx = interval_list.index(self.landmark_update_interval)
-            self.landmark_update_interval = interval_list[(current_idx + 1) % len(interval_list)]
-            print(f"YOLO補正の更新間隔を {self.landmark_update_interval}フレーム/回 に変更")
 
         # YでYOLOデバッグ描画のON/OFF切り替え
         if action == glfw.PRESS and key == glfw.KEY_Y:
@@ -1183,12 +1094,12 @@ class Application:
         except Exception as e:
             print(f"ランドマーク上書き適用エラー: {e}")
 
-    def sample_landmark_color_stats(self, rgb_image, face_landmarks, landmark_id):
+    def sample_landmark_rgb(self, rgb_image, face_landmarks, landmark_id):
         if rgb_image is None or face_landmarks is None:
-            return None, None
+            return None
 
         if landmark_id < 0 or landmark_id >= len(face_landmarks.landmark):
-            return None, None
+            return None
 
         h, w = rgb_image.shape[:2]
         landmark = face_landmarks.landmark[landmark_id]
@@ -1201,16 +1112,14 @@ class Application:
         y1 = max(0, y - radius)
         y2 = min(h, y + radius + 1)
         if x1 >= x2 or y1 >= y2:
-            return None, None
+            return None
 
         patch = rgb_image[y1:y2, x1:x2, :3].astype('float32')
-        rgb = np.median(patch.reshape(-1, 3), axis=0)
-        luma = patch[:, :, 0] * 0.299 + patch[:, :, 1] * 0.587 + patch[:, :, 2] * 0.114
-        return rgb, max(float(np.std(luma)), 1.0)
+        return np.median(patch.reshape(-1, 3), axis=0)
 
-    def sample_landmarks_color_stats(self, rgb_image, face_landmarks, landmark_ids):
+    def sample_landmarks_rgb(self, rgb_image, face_landmarks, landmark_ids):
         if rgb_image is None or face_landmarks is None:
-            return None, None
+            return None
 
         patches = []
         for landmark_id in landmark_ids:
@@ -1233,12 +1142,10 @@ class Application:
             patches.append(rgb_image[y1:y2, x1:x2, :3].astype('float32').reshape(-1, 3))
 
         if not patches:
-            return None, None
+            return None
 
         pixels = np.vstack(patches)
-        rgb = np.median(pixels, axis=0)
-        luma = pixels[:, 0] * 0.299 + pixels[:, 1] * 0.587 + pixels[:, 2] * 0.114
-        return rgb, max(float(np.std(luma)), 1.0)
+        return np.median(pixels, axis=0)
 
     def draw_skin_color_landmarks(self, image, face_landmarks):
         h, w = image.shape[:2]
@@ -1260,7 +1167,7 @@ class Application:
     def sample_texture_reference_color_stats(self, texture_path):
         img = cv2.imread(texture_path, cv2.IMREAD_UNCHANGED)
         if img is None:
-            return None, None
+            return None
 
         if img.shape[2] == 4:
             rgb_image = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
@@ -1271,7 +1178,7 @@ class Application:
             results = face_mesh.process(rgb_image)
 
         if results.multi_face_landmarks:
-            return self.sample_landmarks_color_stats(
+            return self.sample_landmarks_rgb(
                 rgb_image,
                 results.multi_face_landmarks[0],
                 self.skin_landmarks)
@@ -1283,15 +1190,11 @@ class Application:
         y1 = max(0, h // 2 - radius)
         y2 = min(h, h // 2 + radius + 1)
         patch = rgb_image[y1:y2, x1:x2, :3].astype('float32')
-        rgb = np.median(patch.reshape(-1, 3), axis=0)
-        luma = patch[:, :, 0] * 0.299 + patch[:, :, 1] * 0.587 + patch[:, :, 2] * 0.114
-        return rgb, max(float(np.std(luma)), 1.0)
+        return np.median(patch.reshape(-1, 3), axis=0)
 
     def initialize_model_color_reference(self):
         self.model_reference_rgb = None
-        self.model_reference_luma_std = 1.0
         self.smoothed_target_rgb = None
-        self.smoothed_contrast = 1.0
 
         if not self.use_model_color_match or not hasattr(self, 'model'):
             return
@@ -1299,12 +1202,11 @@ class Application:
         for material in self.model.materials:
             if material.tex is None:
                 continue
-            rgb, luma_std = self.sample_texture_reference_color_stats(material.tex)
+            rgb = self.sample_texture_reference_color_stats(material.tex)
             if rgb is None:
                 continue
             self.model_reference_rgb = rgb
-            self.model_reference_luma_std = luma_std
-            print(f"モデル色補正基準: landmarks={self.skin_landmarks}, RGB={rgb.astype(int).tolist()}, contrast_std={luma_std:.2f}")
+            print(f"モデル色補正基準: landmarks={self.skin_landmarks}, RGB={rgb.astype(int).tolist()}")
             return
 
         print("モデル色補正基準を取得できませんでした")
@@ -1318,32 +1220,23 @@ class Application:
             if abs(yaw) > self.color_match_update_yaw_limit:
                 return
 
-        target_rgb, target_luma_std = self.sample_landmarks_color_stats(
+        target_rgb = self.sample_landmarks_rgb(
             rgb_image,
             face_landmarks,
             self.skin_landmarks)
         if target_rgb is None:
             return
 
-        contrast = target_luma_std / max(self.model_reference_luma_std, 1.0)
-        contrast = float(np.clip(
-            contrast,
-            self.color_match_min_contrast,
-            self.color_match_max_contrast))
-
         if self.smoothed_target_rgb is None:
             self.smoothed_target_rgb = target_rgb
-            self.smoothed_contrast = contrast
         else:
             alpha = self.color_match_smoothing
             self.smoothed_target_rgb = alpha * self.smoothed_target_rgb + (1.0 - alpha) * target_rgb
-            self.smoothed_contrast = alpha * self.smoothed_contrast + (1.0 - alpha) * contrast
 
         for material in self.model.materials:
             material.update_color_adjustment(
                 self.model_reference_rgb,
-                self.smoothed_target_rgb,
-                self.smoothed_contrast)
+                self.smoothed_target_rgb)
       
       
     #
@@ -1400,7 +1293,6 @@ class Application:
         print("  [Q] 終了    [S] 画像保存    [R] 録画")
         print("  [N] モデル描画    [P] 対応点モード")
         print("  [T] 表示モード切替")
-        print("  [F] YOLOYOLO補正の更新間隔切替")
         print("  [Y] YOLOデバッグ描画切替")
         print("=" * 50)
         

@@ -71,7 +71,7 @@ class Material():
         glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height,
                      0, format_type, GL_UNSIGNED_BYTE, img)
 
-    def update_color_adjustment(self, source_rgb, target_rgb, contrast=1.0):
+    def update_color_adjustment(self, source_rgb, target_rgb):
         if self.source_texture_img is None:
             return
 
@@ -79,7 +79,7 @@ class Material():
         target_rgb = target_rgb.astype('float32')
         adjusted = self.source_texture_img.astype('float32')
         rgb = adjusted[:, :, :3]
-        rgb[:] = (rgb - source_rgb) * contrast + target_rgb
+        rgb[:] = (rgb - source_rgb) + target_rgb
         adjusted[:, :, :3] = np.clip(rgb, 0, 255)
         adjusted = adjusted.astype('uint8')
 
