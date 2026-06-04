@@ -89,7 +89,7 @@ class Application:
         
         # YOLO輪郭によるリアルタイム補正（メモリ上で直接処理）
         # 設定項目：
-        self.use_realtime_rinkaku_override = False       # YOLO補正の有効/無効
+        self.use_realtime_rinkaku_override = True       # YOLO補正の有効/無効
         self.landmark_update_interval = 5                  # Nフレームに1回だけYOLO推論を実行
         self.realtime_frame_count = 0
         self.use_yolo_outlier_filter = True               # 端寄りYOLO結果を無視する
