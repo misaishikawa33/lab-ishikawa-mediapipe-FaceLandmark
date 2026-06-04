@@ -79,6 +79,7 @@ class CreateMQO:
         self.landmark = np.array([])
         self.landmark_nomalize = np.array([])
         self.set_point(texture)
+        texture = self.texture_for_model
         
         # ヘッダ出力
         self.outputs = []
@@ -189,6 +190,7 @@ class CreateMQO:
     # テクスチャ画像の特徴点を検出し、uv座標、xyz座標、メッシュ情報を求める関数
     #
     def set_point(self, texture_filename):
+        self.texture_for_model = texture_filename
         # MediaPipeのFaceMeshインスタンスを作成する
         face = mp.solutions.face_mesh.FaceMesh(
             static_image_mode=True,
@@ -240,6 +242,8 @@ class CreateMQO:
 
         # print(f"テクスチャー画像: {rgb_img}")
         face_mesh = face.process(rgb_img)
+        if not face_mesh.multi_face_landmarks:
+            raise ValueError(f"顔ランドマークを検出できませんでした: {texture_filename}")
         
         # 座標、メッシュ情報格納用リスト
         x = []
@@ -254,6 +258,10 @@ class CreateMQO:
         
         # ランドマークの導出及び描画
         for face_landmarks in face_mesh.multi_face_landmarks:
+            self.texture_for_model = self.create_edge_extended_texture(
+                img,
+                face_landmarks,
+                used_path)
             # 画像上に描画
             mp.solutions.drawing_utils.draw_landmarks(
                 annotated_image, 
@@ -529,6 +537,53 @@ class CreateMQO:
         face.close()
 
         cv2.destroyAllWindows()
+
+    def create_edge_extended_texture(self, img, face_landmarks, texture_path):
+        """
+        横向き表示時に顔端が黒背景を拾わないよう、顔輪郭周辺を内側の色で外挿した
+        モデル表示用テクスチャを作成する。
+        """
+        h, w = img.shape[:2]
+        oval_indices = sorted({
+            idx
+            for connection in mp.solutions.face_mesh.FACEMESH_FACE_OVAL
+            for idx in connection
+        })
+
+        points = []
+        for idx in oval_indices:
+            landmark = face_landmarks.landmark[idx]
+            x = int(np.clip(round(landmark.x * w), 0, w - 1))
+            y = int(np.clip(round(landmark.y * h), 0, h - 1))
+            points.append([x, y])
+
+        if len(points) < 3:
+            return texture_path
+
+        hull = cv2.convexHull(np.array(points, dtype=np.int32))
+        face_mask = np.zeros((h, w), dtype=np.uint8)
+        cv2.fillConvexPoly(face_mask, hull, 255)
+
+        # 輪郭ぎりぎりの暗い画素も置き換えるため、少し内側を安全な既知領域にする。
+        safe_margin = max(3, min(h, w) // 80)
+        extend_margin = max(18, min(h, w) // 14)
+        safe_kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE,
+            (safe_margin * 2 + 1, safe_margin * 2 + 1))
+        extend_kernel = cv2.getStructuringElement(
+            cv2.MORPH_ELLIPSE,
+            (extend_margin * 2 + 1, extend_margin * 2 + 1))
+
+        safe_face_mask = cv2.erode(face_mask, safe_kernel)
+        extended_face_mask = cv2.dilate(face_mask, extend_kernel)
+        extension_mask = cv2.subtract(extended_face_mask, safe_face_mask)
+        extended_img = cv2.inpaint(img, extension_mask, 5, cv2.INPAINT_TELEA)
+
+        base_name = os.path.splitext(os.path.basename(texture_path))[0]
+        output_path = f"mqodata/model/{base_name}_edge_extended.png"
+        cv2.imwrite(output_path, extended_img)
+        print(f"顔端拡張テクスチャを保存しました: {output_path}")
+        return output_path
     
 if __name__ == '__main__':
     if len(sys.argv)!=2:

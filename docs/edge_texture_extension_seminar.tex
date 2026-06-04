@@ -1,0 +1,183 @@
+\documentclass[uplatex,dvipdfmx]{jsarticle}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  backgroundcolor=\color{gray!8}
+}
+
+\title{顔モデル端部の黒化原因とテクスチャ外挿による改善}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{目的}
+
+本資料では，マスク用3次元顔モデルを横向きに表示した際に，顔の端部が黒く見える問題について，原因と対策をまとめる．
+今回はアルファ処理を使用しない条件で考える．
+そのため，透明部分のRGB値やアルファブレンドではなく，正面画像から作成したテクスチャと3次元形状の関係に注目する．
+
+\section{問題}
+
+正面画像から生成した顔モデルを左右に回転させると，顔の端部が黒く，または暗く見えることがある．
+この現象は，特に顔輪郭付近やマスク端部で目立つ．
+
+アルファ処理を行っていない場合，この黒化は透明度の問題ではない．
+主な原因は，横向き表示時に顔端のポリゴンが，正面画像の輪郭ぎりぎりの暗い画素や背景画素をテクスチャとして参照してしまうことである．
+
+\section{モデル生成の仕組み}
+
+本システムでは，正面画像にMediaPipe FaceMeshを適用し，顔ランドマークを取得する．
+各ランドマークについて，画像上の2次元座標だけでなく，MediaPipeが推定した奥行き方向の値も利用する．
+
+\begin{lstlisting}[language=Python]
+x.append(p.x * img.shape[1])
+y.append(p.y * img.shape[0])
+z.append(p.z * img.shape[1])
+\end{lstlisting}
+
+その後，取得したランドマークを3次元座標へ変換し，MediaPipe FaceMesh由来の三角形メッシュで接続する．
+テクスチャ座標には，正面画像上のランドマーク座標を使用する．
+
+つまり，モデルは明示的な半球として生成しているわけではない．
+実際には，
+
+\begin{enumerate}
+  \item 正面画像からMediaPipe FaceMeshで顔ランドマークを推定する
+  \item 推定された $x, y, z$ から3次元点群を作る
+  \item FaceMeshの三角形接続に基づいて面を作る
+  \item 正面画像をテクスチャとして貼る
+\end{enumerate}
+
+という流れである．
+
+\section{黒く見える原因}
+
+横向き表示時に問題になるのは，側面に対応する実際の画像情報が存在しない点である．
+使用しているテクスチャは正面画像1枚であるため，顔の側面に必要な肌色情報は，正面画像の輪郭付近から参照される．
+
+正面画像の輪郭付近には，以下のような画素が含まれやすい．
+
+\begin{itemize}
+  \item 背景の黒または暗い画素
+  \item 髪や影による暗い画素
+  \item 顔と背景の境界にある混合画素
+  \item マスク端部や輪郭線付近の暗い画素
+\end{itemize}
+
+顔端のポリゴンがこれらの画素を参照すると，モデルを回転させたときに端部が黒く見える．
+これは，正面画像から側面を推定して表示する構造上，発生しやすい問題である．
+
+\section{対策方針}
+
+対策として，元画像そのものを変更するのではなく，モデル表示用に顔端を補完した専用テクスチャを作成する．
+顔輪郭の外側や輪郭ぎりぎりの暗い領域を，顔の内側の色で外挿することで，UVが端部を参照しても黒背景を拾いにくくする．
+
+今回の修正では，MediaPipe FaceMeshの顔輪郭接続である \verb|FACEMESH_FACE_OVAL| を利用して顔領域を作成した．
+その顔領域を少し収縮・膨張させ，補完対象となる輪郭周辺領域を作成する．
+
+\section{実装内容}
+
+実装は \verb|create_MQO.py| に追加した．
+モデル生成時に，通常のテクスチャを読み込んだあと，顔輪郭周辺を補完したテクスチャを作成し，MQOモデルからはその補完後テクスチャを参照する．
+
+追加した主な処理は以下である．
+
+\begin{lstlisting}[language=Python]
+def create_edge_extended_texture(self, img, face_landmarks, texture_path):
+    h, w = img.shape[:2]
+    oval_indices = sorted({
+        idx
+        for connection in mp.solutions.face_mesh.FACEMESH_FACE_OVAL
+        for idx in connection
+    })
+\end{lstlisting}
+
+まず，FaceMeshの顔輪郭ランドマークを取得する．
+次に，それらの点から顔領域を表すマスクを作成する．
+
+\begin{lstlisting}[language=Python]
+hull = cv2.convexHull(np.array(points, dtype=np.int32))
+face_mask = np.zeros((h, w), dtype=np.uint8)
+cv2.fillConvexPoly(face_mask, hull, 255)
+\end{lstlisting}
+
+その後，顔領域を少し内側へ縮小した安全領域と，外側へ拡張した領域を作る．
+この差分を補完対象領域とする．
+
+\begin{lstlisting}[language=Python]
+safe_face_mask = cv2.erode(face_mask, safe_kernel)
+extended_face_mask = cv2.dilate(face_mask, extend_kernel)
+extension_mask = cv2.subtract(extended_face_mask, safe_face_mask)
+\end{lstlisting}
+
+最後に，OpenCVの \verb|inpaint| を用いて，補完対象領域を周囲の色から補間する．
+
+\begin{lstlisting}[language=Python]
+extended_img = cv2.inpaint(img, extension_mask, 5, cv2.INPAINT_TELEA)
+\end{lstlisting}
+
+生成したテクスチャは以下の形式で保存する．
+
+\begin{lstlisting}[language=Python]
+mqodata/model/*_edge_extended.png
+\end{lstlisting}
+
+MQOファイルのマテリアル設定では，元画像ではなくこの補完後テクスチャを参照するようにした．
+
+\section{処理の流れ}
+
+今回の修正後のモデル生成処理は以下の流れになる．
+
+\begin{enumerate}
+  \item 入力テクスチャ画像を読み込む
+  \item MediaPipe FaceMeshで顔ランドマークを検出する
+  \item 顔輪郭ランドマークから顔領域マスクを作る
+  \item 顔領域の内側と外側の差分から，補完対象となる輪郭周辺領域を作る
+  \item \verb|cv2.inpaint| により，輪郭周辺を顔内側の色で補完する
+  \item 補完後テクスチャを \verb|*_edge_extended.png| として保存する
+  \item MQOモデルから補完後テクスチャを参照する
+\end{enumerate}
+
+\section{期待される効果}
+
+この修正により，横向き表示時に顔端ポリゴンが黒背景や暗い境界画素を拾う問題を軽減できる．
+特に，正面画像の輪郭外側が暗い場合や，顔端に背景色が混ざっている場合に効果がある．
+
+また，元画像はそのまま保持し，モデル表示用のテクスチャだけを別ファイルとして生成するため，元データを破壊しない．
+必要に応じて補完後テクスチャを確認し，補完範囲を調整できる点も利点である．
+
+\section{注意点}
+
+この方法は，黒化の原因が「輪郭付近の暗いテクスチャ参照」である場合に有効である．
+ただし，完全な側面画像を新しく生成しているわけではないため，実際の顔側面の模様や陰影を正確に再現するものではない．
+
+そのため，以下のような場合には追加対策が必要になる可能性がある．
+
+\begin{itemize}
+  \item 横向き角度が大きく，正面画像だけでは側面情報が不足する場合
+  \item 輪郭付近に髪やマスクの濃い影が大きく入り込んでいる場合
+  \item 補完範囲が小さく，まだ暗い画素をUVが参照している場合
+  \item 補完範囲が大きすぎて，顔端の質感が不自然に伸びる場合
+\end{itemize}
+
+この場合は，\verb|extend_margin| を大きくして補完範囲を広げる，または輪郭付近のUVを少し内側へ寄せる処理を追加することが考えられる．
+
+\section{まとめ}
+
+顔モデル端部の黒化は，アルファ処理がない場合でも発生する．
+原因は，正面画像から作成したモデルを横向きに表示した際，顔端ポリゴンが正面画像の輪郭付近にある暗い画素や背景画素を参照することである．
+
+今回の修正では，FaceMeshの顔輪郭からマスクを作成し，輪郭周辺を顔内側の色で外挿したモデル表示用テクスチャを生成した．
+これにより，横向き表示時に黒背景を拾いにくくなり，顔端の黒化を軽減できる．
+
+\end{document}

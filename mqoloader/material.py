@@ -1,4 +1,5 @@
 import cv2
+import numpy as np
 from OpenGL.GL import *
 
 def vec(*args):
@@ -19,6 +20,9 @@ class Material():
         self.spcular = vec(spc, spc, spc, 1)
         self.power = power
         self.tex = tex
+        self.source_texture_img = None
+        self.texture_format = None
+        self.texture_internal_format = None
         if tex != None:
             self.load_texture(tex, textureID)
     
@@ -53,6 +57,9 @@ class Material():
             internal_format = GL_RGB8
             format_type = GL_RGB
         
+        self.source_texture_img = img.copy()
+        self.texture_internal_format = internal_format
+        self.texture_format = format_type
         self.textureID = textureID
         glBindTexture(GL_TEXTURE_2D,self.textureID)
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT)
@@ -63,3 +70,20 @@ class Material():
         height, width = img.shape[:2]
         glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height,
                      0, format_type, GL_UNSIGNED_BYTE, img)
+
+    def update_color_adjustment(self, source_rgb, target_rgb, contrast=1.0):
+        if self.source_texture_img is None:
+            return
+
+        source_rgb = source_rgb.astype('float32')
+        target_rgb = target_rgb.astype('float32')
+        adjusted = self.source_texture_img.astype('float32')
+        rgb = adjusted[:, :, :3]
+        rgb[:] = (rgb - source_rgb) * contrast + target_rgb
+        adjusted[:, :, :3] = np.clip(rgb, 0, 255)
+        adjusted = adjusted.astype('uint8')
+
+        height, width = adjusted.shape[:2]
+        glBindTexture(GL_TEXTURE_2D, self.textureID)
+        glTexImage2D(GL_TEXTURE_2D, 0, self.texture_internal_format, width, height,
+                     0, self.texture_format, GL_UNSIGNED_BYTE, adjusted)

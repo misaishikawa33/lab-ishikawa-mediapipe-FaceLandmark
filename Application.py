@@ -49,10 +49,20 @@ class Application:
 
         # モデル描画制御
         self.draw_model_flag = True  # モデル描画のON/OFF
-        # アルファ処理で見た目が小さくなる分の描画補正（描画時のみ拡大）
-        self.use_alpha_size_compensation = True
-        self.alpha_compensation_scale_x = 1.03
-        self.alpha_compensation_scale_y = 1.03
+
+        # 入力画像の肌色基準ランドマーク群を基準にモデルテクスチャの色味・コントラストを合わせる
+        self.use_model_color_match = True
+        self.skin_landmarks = [10, 151, 9, 8, 168]
+        self.color_match_patch_radius = 5
+        self.model_reference_rgb = None
+        self.model_reference_luma_std = 1.0
+        self.smoothed_target_rgb = None
+        self.smoothed_contrast = 1.0
+        self.color_match_smoothing = 0.85
+        self.color_match_min_contrast = 1.0
+        self.color_match_max_contrast = 1.25
+        self.color_match_update_yaw_limit = 15.0
+        self.draw_skin_landmarks = True
         
         # ランドマーク位置調整機能
         self.adjust_landmarks = False
@@ -79,7 +89,7 @@ class Application:
         
         # YOLO輪郭によるリアルタイム補正（メモリ上で直接処理）
         # 設定項目：
-        self.use_realtime_rinkaku_override = True       # YOLO補正の有効/無効
+        self.use_realtime_rinkaku_override = False       # YOLO補正の有効/無効
         self.landmark_update_interval = 5                  # Nフレームに1回だけYOLO推論を実行
         self.realtime_frame_count = 0
         self.use_yolo_outlier_filter = True               # 端寄りYOLO結果を無視する
@@ -298,7 +308,6 @@ class Application:
             for face_landmarks in self.face_mesh.multi_face_landmarks:
                 self.apply_manual_landmark_overrides(face_landmarks)
 
-
         # # === 静的画像処理（単一画像） ===
 
 
@@ -335,6 +344,11 @@ class Application:
 
         # ステータス表示を追加（RGB画像に描画）
         self.draw_status_info(self.rgb_image_for_display)
+
+        if self.draw_skin_landmarks and self.face_mesh.multi_face_landmarks:
+            self.draw_skin_color_landmarks(
+                self.rgb_image_for_display,
+                self.face_mesh.multi_face_landmarks[0])
 
         # RGB画像を描画するメソッドを実行
         self.glwindow.draw_image(self.rgb_image_for_display)    
@@ -405,6 +419,8 @@ class Application:
             success, vector, angle = self.compute_camera_pose(point_2D, point_3D)
             self.angle = angle
             self.alignment_info = None  # 固定値に設定
+            if success:
+                self.update_model_color_match(self.image, self.face_mesh.multi_face_landmarks[0])
             
             #
             # モデル描画フラグが有効な場合のみモデルを描画
@@ -439,7 +455,7 @@ class Application:
     # モデル描画に関する処理を行う関数
     #
 
-    def draw_model(self, scale_x = 1.0, scale_y = 1.0):
+    def draw_model(self):
         #
         # モデル表示に関するOpenGLの値の設定
         #
@@ -489,15 +505,6 @@ class Application:
             
             # print(f"モデル平行移動: X={model_shift_X:.1f}, Y={model_shift_Y:.1f}")
         
-        model_scale_X = 1.0 * scale_x
-        model_scale_Y = 1.0 * scale_y
-        model_scale_Z = 1.0 
-
-        # PnPには影響させず、描画モデルのみをわずかに拡大してアルファ透過分を補正する
-        if self.use_alpha_size_compensation:
-            model_scale_X *= self.alpha_compensation_scale_x
-            model_scale_Y *= self.alpha_compensation_scale_y
-    
         # 世界座標系の描画
         if self.draw_axis:
             mesh_size = 200.0
@@ -515,8 +522,6 @@ class Application:
 
         # 3次元モデルを描画
         glTranslatef(model_shift_X, model_shift_Y, model_shift_Z)
-        # 3次元モデルのスケールに変更
-        glScalef(model_scale_X, model_scale_Y, model_scale_Z)
         glRotatef(0.0, 1.0, 0.0, 0.0)
         # 3次元モデルを記述(mqoloderクラスのdrawメソッド)
         self.model.draw()
@@ -1177,6 +1182,168 @@ class Application:
                 face_landmarks.landmark[idx].y = y_px / self.height
         except Exception as e:
             print(f"ランドマーク上書き適用エラー: {e}")
+
+    def sample_landmark_color_stats(self, rgb_image, face_landmarks, landmark_id):
+        if rgb_image is None or face_landmarks is None:
+            return None, None
+
+        if landmark_id < 0 or landmark_id >= len(face_landmarks.landmark):
+            return None, None
+
+        h, w = rgb_image.shape[:2]
+        landmark = face_landmarks.landmark[landmark_id]
+        x = int(round(landmark.x * w))
+        y = int(round(landmark.y * h))
+        radius = self.color_match_patch_radius
+
+        x1 = max(0, x - radius)
+        x2 = min(w, x + radius + 1)
+        y1 = max(0, y - radius)
+        y2 = min(h, y + radius + 1)
+        if x1 >= x2 or y1 >= y2:
+            return None, None
+
+        patch = rgb_image[y1:y2, x1:x2, :3].astype('float32')
+        rgb = np.median(patch.reshape(-1, 3), axis=0)
+        luma = patch[:, :, 0] * 0.299 + patch[:, :, 1] * 0.587 + patch[:, :, 2] * 0.114
+        return rgb, max(float(np.std(luma)), 1.0)
+
+    def sample_landmarks_color_stats(self, rgb_image, face_landmarks, landmark_ids):
+        if rgb_image is None or face_landmarks is None:
+            return None, None
+
+        patches = []
+        for landmark_id in landmark_ids:
+            if landmark_id < 0 or landmark_id >= len(face_landmarks.landmark):
+                continue
+
+            h, w = rgb_image.shape[:2]
+            landmark = face_landmarks.landmark[landmark_id]
+            x = int(round(landmark.x * w))
+            y = int(round(landmark.y * h))
+            radius = self.color_match_patch_radius
+
+            x1 = max(0, x - radius)
+            x2 = min(w, x + radius + 1)
+            y1 = max(0, y - radius)
+            y2 = min(h, y + radius + 1)
+            if x1 >= x2 or y1 >= y2:
+                continue
+
+            patches.append(rgb_image[y1:y2, x1:x2, :3].astype('float32').reshape(-1, 3))
+
+        if not patches:
+            return None, None
+
+        pixels = np.vstack(patches)
+        rgb = np.median(pixels, axis=0)
+        luma = pixels[:, 0] * 0.299 + pixels[:, 1] * 0.587 + pixels[:, 2] * 0.114
+        return rgb, max(float(np.std(luma)), 1.0)
+
+    def draw_skin_color_landmarks(self, image, face_landmarks):
+        h, w = image.shape[:2]
+        for landmark_id in self.skin_landmarks:
+            if landmark_id < 0 or landmark_id >= len(face_landmarks.landmark):
+                continue
+
+            landmark = face_landmarks.landmark[landmark_id]
+            x = int(round(landmark.x * w))
+            y = int(round(landmark.y * h))
+            if x < 0 or x >= w or y < 0 or y >= h:
+                continue
+
+            cv2.circle(image, (x, y), 4, (255, 80, 0), -1)
+            cv2.circle(image, (x, y), 6, (255, 255, 255), 1)
+            cv2.putText(image, str(landmark_id), (x + 6, y - 6),
+                       cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1, cv2.LINE_AA)
+
+    def sample_texture_reference_color_stats(self, texture_path):
+        img = cv2.imread(texture_path, cv2.IMREAD_UNCHANGED)
+        if img is None:
+            return None, None
+
+        if img.shape[2] == 4:
+            rgb_image = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
+        else:
+            rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        with mp.solutions.face_mesh.FaceMesh(static_image_mode=True, min_detection_confidence=0.25) as face_mesh:
+            results = face_mesh.process(rgb_image)
+
+        if results.multi_face_landmarks:
+            return self.sample_landmarks_color_stats(
+                rgb_image,
+                results.multi_face_landmarks[0],
+                self.skin_landmarks)
+
+        h, w = rgb_image.shape[:2]
+        radius = max(self.color_match_patch_radius * 2, 10)
+        x1 = max(0, w // 2 - radius)
+        x2 = min(w, w // 2 + radius + 1)
+        y1 = max(0, h // 2 - radius)
+        y2 = min(h, h // 2 + radius + 1)
+        patch = rgb_image[y1:y2, x1:x2, :3].astype('float32')
+        rgb = np.median(patch.reshape(-1, 3), axis=0)
+        luma = patch[:, :, 0] * 0.299 + patch[:, :, 1] * 0.587 + patch[:, :, 2] * 0.114
+        return rgb, max(float(np.std(luma)), 1.0)
+
+    def initialize_model_color_reference(self):
+        self.model_reference_rgb = None
+        self.model_reference_luma_std = 1.0
+        self.smoothed_target_rgb = None
+        self.smoothed_contrast = 1.0
+
+        if not self.use_model_color_match or not hasattr(self, 'model'):
+            return
+
+        for material in self.model.materials:
+            if material.tex is None:
+                continue
+            rgb, luma_std = self.sample_texture_reference_color_stats(material.tex)
+            if rgb is None:
+                continue
+            self.model_reference_rgb = rgb
+            self.model_reference_luma_std = luma_std
+            print(f"モデル色補正基準: landmarks={self.skin_landmarks}, RGB={rgb.astype(int).tolist()}, contrast_std={luma_std:.2f}")
+            return
+
+        print("モデル色補正基準を取得できませんでした")
+
+    def update_model_color_match(self, rgb_image, face_landmarks):
+        if not self.use_model_color_match or self.model_reference_rgb is None:
+            return
+
+        if self.angle is not None and self.smoothed_target_rgb is not None:
+            yaw = self.angle[0]
+            if abs(yaw) > self.color_match_update_yaw_limit:
+                return
+
+        target_rgb, target_luma_std = self.sample_landmarks_color_stats(
+            rgb_image,
+            face_landmarks,
+            self.skin_landmarks)
+        if target_rgb is None:
+            return
+
+        contrast = target_luma_std / max(self.model_reference_luma_std, 1.0)
+        contrast = float(np.clip(
+            contrast,
+            self.color_match_min_contrast,
+            self.color_match_max_contrast))
+
+        if self.smoothed_target_rgb is None:
+            self.smoothed_target_rgb = target_rgb
+            self.smoothed_contrast = contrast
+        else:
+            alpha = self.color_match_smoothing
+            self.smoothed_target_rgb = alpha * self.smoothed_target_rgb + (1.0 - alpha) * target_rgb
+            self.smoothed_contrast = alpha * self.smoothed_contrast + (1.0 - alpha) * contrast
+
+        for material in self.model.materials:
+            material.update_color_adjustment(
+                self.model_reference_rgb,
+                self.smoothed_target_rgb,
+                self.smoothed_contrast)
       
       
     #
@@ -1202,6 +1369,7 @@ class Application:
     # ３次元モデルをセット
     def set_mqo_model(self, model):
         self.model = model
+        self.initialize_model_color_reference()
     
     # 入力画像をセット
     def set_image(self, image):
