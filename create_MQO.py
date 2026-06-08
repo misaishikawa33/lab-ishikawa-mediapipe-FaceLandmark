@@ -14,9 +14,9 @@ class CreateMQO:
     # コンストラクタ
     #
     # @param texture : テクスチャ画像
-    # @param use_alpha : アルファ処理を行うか
+    # @param use_edge_texture_extension : 顔端の黒化対策としてテクスチャ外挿を行うか
     #
-    def __init__(self, texture, use_alpha=False):
+    def __init__(self, texture, use_edge_texture_extension=True):
         
         # 顔下部切り取りを行うか
         self.use_cut = True
@@ -24,54 +24,14 @@ class CreateMQO:
         self.masked_face = True
         # 世界座標系を記述　
         self.world_coordinate = False
-        
-        # アルファ処理を行うか
-        self.use_alpha = use_alpha
+        # 顔端の黒化対策としてテクスチャ外挿を行うか
+        self.use_edge_texture_extension = use_edge_texture_extension
         
         # ファイル名用日付
         self.today = str(datetime.date.today()).replace('-','')
         # ファイル作成
         self.mesh = np.loadtxt("mqodata/mesh.dat", dtype='int')
         self.mesh_cut = np.array([])
-        
-        # アルファ処理を実行（set_point の前に実行する必要がある）
-        if self.use_alpha:
-            print("アルファ処理を開始します...")
-            from ContourAlpha import ContourAlpha
-
-            # texture の指定形式（nomask.jpg / mqodata/nomask.jpg など）に依存せず実ファイルを解決する
-            alpha_candidates = [
-                texture,
-                f"mqodata/model/{texture}",
-                f"mqodata/{texture}",
-            ]
-            if texture.startswith("mqodata/"):
-                base_name = texture[8:]
-                alpha_candidates.extend([
-                    base_name,
-                    f"mqodata/model/{base_name}",
-                    f"mqodata/{base_name}",
-                ])
-
-            texture_path = None
-            for candidate in alpha_candidates:
-                if os.path.exists(candidate):
-                    texture_path = candidate
-                    break
-
-            if texture_path is None:
-                raise FileNotFoundError(
-                    f"アルファ処理対象のテクスチャが見つかりません: {texture}\n"
-                    f"試行したパス: {alpha_candidates}"
-                )
-
-            # simple_mode=Trueで可視化出力なし、save_org=Trueでアルファ処理後の画像を出力
-            ContourAlpha(texture_path, use_cut=self.use_cut, save_org=True, use_spline=False, simple_mode=True)
-
-            # アルファ処理後は texture_path と同じ場所に .png が保存される
-            base_name = os.path.splitext(texture_path)[0]
-            texture = base_name + '.png'
-            print(f"アルファ処理が完了しました。使用するテクスチャ: {texture}")
         
         # テクスチャ画像から特徴点、特徴点の正規化、新たなメッシュ情報を生成
         self.data = np.array([])
@@ -258,10 +218,11 @@ class CreateMQO:
         
         # ランドマークの導出及び描画
         for face_landmarks in face_mesh.multi_face_landmarks:
-            self.texture_for_model = self.create_edge_extended_texture(
-                img,
-                face_landmarks,
-                used_path)
+            if self.use_edge_texture_extension:
+                self.texture_for_model = self.create_edge_extended_texture(
+                    img,
+                    face_landmarks,
+                    used_path)
             # 画像上に描画
             mp.solutions.drawing_utils.draw_landmarks(
                 annotated_image, 
@@ -565,7 +526,7 @@ class CreateMQO:
         cv2.fillConvexPoly(face_mask, hull, 255)
 
         # 輪郭ぎりぎりの暗い画素も置き換えるため、少し内側を安全な既知領域にする。
-        safe_margin = max(3, min(h, w) // 80)
+        safe_margin = max(3, min(h, w) // 60)
         extend_margin = max(18, min(h, w) // 14)
         safe_kernel = cv2.getStructuringElement(
             cv2.MORPH_ELLIPSE,

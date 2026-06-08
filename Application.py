@@ -15,6 +15,7 @@ import mediapipe as mp
 import GLWindow
 import PoseEstimation as ps
 import USBCamera as cam
+from ModelBoundaryBlender import ModelBoundaryBlender
 from YoloRinkakuCorrector import YoloRinkakuCorrector
 from mqoloader.loadmqo import LoadMQO
 
@@ -50,6 +51,12 @@ class Application:
 
         # モデル描画制御
         self.draw_model_flag = True  # モデル描画のON/OFF
+        # 顔端の黒化対策として、モデル生成時にテクスチャ外挿を行うか
+        self.use_edge_texture_extension = True
+        # モデルと入力画像の境界を自然になじませる後処理
+        self.use_model_boundary_blend = False
+        self.model_boundary_blender = ModelBoundaryBlender(
+            enabled=self.use_model_boundary_blend)
 
         # 入力画像の肌色基準ランドマーク群を基準にモデルテクスチャの色味・コントラストを合わせる
         self.use_model_color_match = True
@@ -59,7 +66,7 @@ class Application:
         self.smoothed_target_rgb = None
         self.color_match_smoothing = 0.85
         self.color_match_update_yaw_limit = 15.0
-        self.draw_skin_landmarks = False
+        self.draw_skin_landmarks = True
 
         # 顔角度（yaw, pitch, roll）
         self.angle = None
@@ -336,6 +343,7 @@ class Application:
             #
             if success and self.draw_model_flag:
                 self.draw_model()
+                self.apply_model_boundary_blend()
     
         #else:
             #
@@ -420,6 +428,22 @@ class Application:
             glDisable(GL_LIGHTING)
             glDisable(GL_LIGHT0)
 
+    def read_framebuffer_rgb(self):
+        image = np.zeros((self.height, self.width, 3), dtype=np.uint8)
+        glReadBuffer(GL_BACK)
+        glReadPixels(0, 0, self.width, self.height, GL_RGB, GL_UNSIGNED_BYTE, image.data)
+        return cv2.flip(image, 0)
+
+    def apply_model_boundary_blend(self):
+        if not self.use_model_boundary_blend:
+            return
+
+        rendered_rgb = self.read_framebuffer_rgb()
+        blended_rgb = self.model_boundary_blender.apply(
+            rendered_rgb,
+            self.rgb_image_for_display)
+        self.glwindow.draw_image(blended_rgb)
+
     
 
 
@@ -496,6 +520,15 @@ class Application:
                 print("モデル描画を有効化しました")
             else:
                 print("モデル描画を無効化しました")
+
+        # Bでモデル境界ブレンドのON/OFF切り替え
+        if action == glfw.PRESS and key == glfw.KEY_B:
+            self.use_model_boundary_blend = not self.use_model_boundary_blend
+            self.model_boundary_blender.enabled = self.use_model_boundary_blend
+            if self.use_model_boundary_blend:
+                print("モデル境界ブレンドを有効化しました")
+            else:
+                print("モデル境界ブレンドを無効化しました")
 
         # YでYOLOデバッグ描画のON/OFF切り替え
         if action == glfw.PRESS and key == glfw.KEY_Y:
@@ -880,6 +913,7 @@ class Application:
         print("キー操作:")
         print("  [Q] 終了    [S] 画像保存    [R] 録画")
         print("  [N] モデル描画    [P] 対応点モード")
+        print("  [B] モデル境界ブレンド切替")
         print("  [T] 表示モード切替")
         print("  [Y] YOLOデバッグ描画切替")
         print("=" * 50)
@@ -910,7 +944,8 @@ class Application:
         コンパクトなステータス表示（ONの機能のみ表示）
         """
         model_status = "ON" if self.draw_model_flag else "OFF"
-        status_text = f"Model Draw: {model_status}"
+        boundary_status = "ON" if self.use_model_boundary_blend else "OFF"
+        status_text = f"Model Draw: {model_status}  Boundary: {boundary_status}"
         cv2.putText(image, status_text, (10, 30),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
@@ -954,6 +989,12 @@ class Application:
         model_draw_color = (0, 255, 0) if self.draw_model_flag else (128, 128, 128)
         cv2.putText(image, f"[N] Model Draw: {model_draw_status}", (text_x, y_offset),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, model_draw_color, 1)
+        y_offset += line_height
+
+        boundary_status = "ON" if self.use_model_boundary_blend else "OFF"
+        boundary_color = (0, 255, 0) if self.use_model_boundary_blend else (128, 128, 128)
+        cv2.putText(image, f"[B] Boundary Blend: {boundary_status}", (text_x, y_offset),
+                   cv2.FONT_HERSHEY_SIMPLEX, 0.5, boundary_color, 1)
         y_offset += line_height
         
         # 対応点モード (Pキー)

@@ -23,24 +23,13 @@ import time
 # メインクラス
 #        
 class Main:
-
-    def ask_alpha_dialog(self):
-        layout_alpha = [[sg.Text("テクスチャにアルファ処理を行いますか？")],
-                        [sg.Button('Yes'), sg.Button('No')]]
-        window_alpha = sg.Window('アルファ処理確認', layout_alpha)
-        event_alpha, values_alpha = window_alpha.read()
-        window_alpha.close()
-
-        if event_alpha in (None, 'Cancel', 'No'):
-            return False
-        return True
     
     #
     # コンストラクタ
     # (@param kwargs : image = "image_filename"
     #                  texture = "texture_filename")
     #
-    def __init__(self, texture, draw_landmark, use_facelandmark=False, use_alpha=False, movie_path=None, record=False, record_format='mp4'):
+    def __init__(self, texture, draw_landmark, use_facelandmark=False, movie_path=None, record=False, record_format='mp4'):
         
         if texture is not None:
             self.take_texture = False
@@ -48,9 +37,6 @@ class Main:
         else:
             self.take_texture = True
             texture_filename = "default.png"
-        
-        # アルファ処理フラグを保持
-        self.use_alpha = use_alpha
         
         # ディスプレイサイズ
         width  = 640
@@ -115,14 +101,6 @@ class Main:
                 # カメラウィンドウを閉じる
                 cv2.destroyAllWindows()
                 
-                # 画像撮影後、アルファ処理を行うか確認（引数で指定されていない場合のみ）
-                if not use_alpha:  # コマンドライン引数でuse_alphaが指定されていない場合
-                    self.window.close()
-                    self.use_alpha = self.ask_alpha_dialog()
-                else:
-                    # コマンドライン引数で指定されている場合はそのまま使用
-                    self.use_alpha = use_alpha
-                    
             elif event == "No":
                 # 画像を撮影せずに、デフォルトのテクスチャ画像を使用
                 texture_filename = "nomask.jpg"
@@ -132,17 +110,15 @@ class Main:
             # ウィンドウクローズ
             self.window.close()
 
-        # 画像ファイルを直接指定した場合も、アルファ処理の有無を選べるようにする
-        if self.take_texture == False and not use_alpha:
-            self.use_alpha = self.ask_alpha_dialog()
-        
         #
         # モデル読み込み
-        # CreateMQOクラスのインスタンス生成（アルファ処理フラグを渡す）
+        # CreateMQOクラスのインスタンス生成
         #
         print("ok")
         start = time.time()
-        mqo = CreateMQO(texture_filename, use_alpha=self.use_alpha)
+        mqo = CreateMQO(
+            texture_filename,
+            use_edge_texture_extension=self.app.use_edge_texture_extension)
         model_filename = os.getcwd() +"/"+ mqo.model_filename
         end = time.time()
         msg = 'Creating %s' % model_filename
@@ -219,9 +195,14 @@ if __name__ == '__main__':
     parser.add_argument('--movie', default=None, help = "path to video file for movie mode")
     parser.add_argument('--draw_landmark', action='store_true', help = "draw landmark")
     parser.add_argument('--use_facelandmark', action='store_true', help = "enable FaceLandmark processing")
-    parser.add_argument('--use_alpha', action='store_true', help = "enable alpha channel processing for texture")
     parser.add_argument('--record', action='store_true', help = "auto record output video when using --movie")
     parser.add_argument('--record_format', default='mp4', choices=['mp4', 'avi'], help = "output video format")
     args = parser.parse_args()
     
-    Main(args.texture, args.draw_landmark, args.use_facelandmark, args.use_alpha, movie_path=args.movie, record=args.record, record_format=args.record_format)
+    Main(
+        args.texture,
+        args.draw_landmark,
+        args.use_facelandmark,
+        movie_path=args.movie,
+        record=args.record,
+        record_format=args.record_format)
