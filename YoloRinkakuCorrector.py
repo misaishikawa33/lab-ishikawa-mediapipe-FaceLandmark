@@ -21,7 +21,9 @@ class YoloRinkakuCorrector:
             yaw_threshold_pos=20,
             target_landmarks_right=None,
             target_landmarks_left=None,
-            draw_debug_overlay=True):
+            draw_debug_overlay=True,
+            use_landmark_crop=False, # YOLO入力をランドマークに基づいて切り抜き
+            crop_margin_ratio=0.35):
         self.width = width
         self.height = height
         self.enabled = enabled
@@ -34,6 +36,8 @@ class YoloRinkakuCorrector:
         self.yaw_threshold_neg = yaw_threshold_neg
         self.yaw_threshold_pos = yaw_threshold_pos
         self.draw_debug_overlay = draw_debug_overlay
+        self.use_landmark_crop = use_landmark_crop
+        self.crop_margin_ratio = crop_margin_ratio
 
         self.target_landmarks_right = target_landmarks_right or [
             111, 116, 123, 147, 213, 192, 138, 135, 169, 150, 149, 176, 148, 152
@@ -58,6 +62,7 @@ class YoloRinkakuCorrector:
         self.available = False
         self.latest_yolo_keypoints = None
         self.latest_rinkaku_points = []
+        self.latest_crop_rect = None
         self.landmark_overrides_px = {}
         self.landmark_overrides_loaded = False
 
@@ -227,6 +232,10 @@ class YoloRinkakuCorrector:
         if image is None:
             return
 
+        if self.latest_crop_rect is not None:
+            x1, y1, x2, y2 = self.latest_crop_rect
+            cv2.rectangle(image, (x1, y1), (x2, y2), (255, 128, 0), 2)
+
         if self.latest_rinkaku_points:
             rinkaku_array = np.array(self.latest_rinkaku_points, dtype=np.int32)
             cv2.polylines(image, [rinkaku_array], False, (255, 255, 0), 2)
@@ -256,35 +265,90 @@ class YoloRinkakuCorrector:
             cv2.putText(image, f"right({rx},{ry})", (rx + 8, ry - 8),
                         cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 2)
 
-    def update_landmark_overrides_from_yolo(self, bgr_image, rinkaku_mode='right'):
+    def get_landmark_crop_rect(self, face_landmarks):
+        if face_landmarks is None:
+            return None
+
+        xs = []
+        ys = []
+        for landmark in face_landmarks.landmark:
+            x = landmark.x * self.width
+            y = landmark.y * self.height
+            if np.isfinite(x) and np.isfinite(y):
+                xs.append(x)
+                ys.append(y)
+
+        if not xs or not ys:
+            return None
+
+        x_min = max(0.0, min(xs))
+        x_max = min(float(self.width - 1), max(xs))
+        y_min = max(0.0, min(ys))
+        y_max = min(float(self.height - 1), max(ys))
+        crop_w = x_max - x_min
+        crop_h = y_max - y_min
+        if crop_w <= 1 or crop_h <= 1:
+            return None
+
+        margin = max(crop_w, crop_h) * self.crop_margin_ratio
+        x1 = int(max(0, np.floor(x_min - margin)))
+        y1 = int(max(0, np.floor(y_min - margin)))
+        x2 = int(min(self.width, np.ceil(x_max + margin)))
+        y2 = int(min(self.height, np.ceil(y_max + margin)))
+
+        return x1, y1, x2, y2
+
+    def prepare_yolo_input(self, bgr_image, face_landmarks):
+        if bgr_image.shape[1] != self.width or bgr_image.shape[0] != self.height:
+            full_image = cv2.resize(bgr_image, (self.width, self.height))
+        else:
+            full_image = bgr_image
+
+        if not self.use_landmark_crop:
+            self.latest_crop_rect = None
+            return full_image, (0, 0, self.width, self.height)
+
+        crop_rect = self.get_landmark_crop_rect(face_landmarks)
+        if crop_rect is None:
+            self.latest_crop_rect = None
+            return full_image, (0, 0, self.width, self.height)
+
+        x1, y1, x2, y2 = crop_rect
+        self.latest_crop_rect = crop_rect
+        return full_image[y1:y2, x1:x2], crop_rect
+
+    def reset_latest_detection(self, keep_crop=False):
+        self.latest_yolo_keypoints = None
+        self.latest_rinkaku_points = []
+        if not keep_crop:
+            self.latest_crop_rect = None
+
+    def update_landmark_overrides_from_yolo(self, bgr_image, rinkaku_mode='right', face_landmarks=None):
         if not self.available or self.model is None or bgr_image is None:
-            self.latest_yolo_keypoints = None
-            self.latest_rinkaku_points = []
+            self.reset_latest_detection()
             return False, {}
 
-        if bgr_image.shape[1] != self.width or bgr_image.shape[0] != self.height:
-            target_image = cv2.resize(bgr_image, (self.width, self.height))
-        else:
-            target_image = bgr_image
+        target_image, crop_rect = self.prepare_yolo_input(bgr_image, face_landmarks)
+        crop_x1, crop_y1, crop_x2, crop_y2 = crop_rect
+        crop_w = crop_x2 - crop_x1
+        crop_h = crop_y2 - crop_y1
 
         try:
             results = self.model(target_image, max_det=1, verbose=False)[0]
         except Exception as e:
             print(f"YOLO推論エラー: {e}")
-            self.latest_yolo_keypoints = None
-            self.latest_rinkaku_points = []
+            self.reset_latest_detection(keep_crop=True)
             return False, {}
 
         if results.masks is None:
-            self.latest_yolo_keypoints = None
-            self.latest_rinkaku_points = []
+            self.reset_latest_detection(keep_crop=True)
             return False, {}
 
         best_contour = None
         best_area = 0.0
 
         for mask in results.masks.data:
-            mask_resized = cv2.resize(mask.cpu().numpy(), (self.width, self.height))
+            mask_resized = cv2.resize(mask.cpu().numpy(), (crop_w, crop_h))
             mask_uint8 = (mask_resized * 255).astype(np.uint8)
             contours, _ = cv2.findContours(mask_uint8, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
@@ -292,20 +356,22 @@ class YoloRinkakuCorrector:
                 continue
 
             main_contour = max(contours, key=cv2.contourArea)
+            if crop_x1 or crop_y1:
+                main_contour = main_contour.copy()
+                main_contour[:, 0, 0] += crop_x1
+                main_contour[:, 0, 1] += crop_y1
             area = cv2.contourArea(main_contour)
             if area > best_area:
                 best_area = area
                 best_contour = main_contour
 
         if best_contour is None:
-            self.latest_yolo_keypoints = None
-            self.latest_rinkaku_points = []
+            self.reset_latest_detection(keep_crop=True)
             return False, {}
 
         keypoints = self.find_mask_keypoints(best_contour)
         if not keypoints:
-            self.latest_yolo_keypoints = None
-            self.latest_rinkaku_points = []
+            self.reset_latest_detection(keep_crop=True)
             return False, {}
 
         mode_config = self.mode_config.get(rinkaku_mode, self.mode_config['right'])

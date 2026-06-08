@@ -66,7 +66,7 @@ class Application:
         self.smoothed_target_rgb = None
         self.color_match_smoothing = 0.85
         self.color_match_update_yaw_limit = 15.0
-        self.draw_skin_landmarks = True
+        self.draw_skin_landmarks = False
 
         # 顔角度（yaw, pitch, roll）
         self.angle = None
@@ -240,9 +240,13 @@ class Application:
             should_update = self.yolo_rinkaku_corrector.should_update(self.realtime_frame_count)
             if should_update and self.yolo_rinkaku_corrector.available and run_rinkaku_override:
                 yolo_input_bgr = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
+                yolo_face_landmarks = None
+                if self.face_mesh.multi_face_landmarks:
+                    yolo_face_landmarks = self.face_mesh.multi_face_landmarks[0]
                 self.yolo_rinkaku_corrector.update_landmark_overrides_from_yolo(
                     yolo_input_bgr,
-                    rinkaku_mode)
+                    rinkaku_mode,
+                    yolo_face_landmarks)
 
         if (
                 self.yolo_rinkaku_corrector.enabled
