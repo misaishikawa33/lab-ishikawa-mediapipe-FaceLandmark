@@ -13,9 +13,9 @@ class ModelBoundaryBlender:
     def __init__(
             self,
             enabled=True,
-            diff_threshold=8,
-            edge_width=14,
-            blur_sigma=6.0,
+            diff_threshold=1,
+            edge_width=28,
+            blur_sigma=12.0,
             min_area_ratio=0.001):
         self.enabled = enabled
         self.diff_threshold = diff_threshold

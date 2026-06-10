@@ -63,6 +63,7 @@ class Application:
         self.skin_landmarks = [10, 151, 9, 8, 168]
         self.color_match_patch_radius = 3
         self.model_reference_rgb = None
+        self.model_edge_reference_rgb = {}
         self.smoothed_target_rgb = None
         self.color_match_smoothing = 0.85
         self.color_match_update_yaw_limit = 15.0
@@ -88,7 +89,6 @@ class Application:
         self.use_yolo_rinkaku_correction = True
         # YOLOの検出結果・補正点を画面に描画するかどうか
         self.draw_yolo_debug_overlay = True
-
         self.realtime_frame_count = 0
         self.yolo_rinkaku_corrector = YoloRinkakuCorrector(
             width=width,
@@ -238,14 +238,18 @@ class Application:
 
         if self.yolo_rinkaku_corrector.enabled:
             should_update = self.yolo_rinkaku_corrector.should_update(self.realtime_frame_count)
-            if should_update and self.yolo_rinkaku_corrector.available and run_rinkaku_override:
+            run_yolo_for_edge_inpaint = self.yolo_rinkaku_corrector.use_mask_edge_inpaint
+            if (
+                    should_update
+                    and self.yolo_rinkaku_corrector.available
+                    and (run_rinkaku_override or run_yolo_for_edge_inpaint)):
                 yolo_input_bgr = cv2.cvtColor(self.image, cv2.COLOR_RGB2BGR)
                 yolo_face_landmarks = None
                 if self.face_mesh.multi_face_landmarks:
                     yolo_face_landmarks = self.face_mesh.multi_face_landmarks[0]
                 self.yolo_rinkaku_corrector.update_landmark_overrides_from_yolo(
                     yolo_input_bgr,
-                    rinkaku_mode,
+                    rinkaku_mode or 'right',
                     yolo_face_landmarks)
 
         if (
@@ -257,6 +261,14 @@ class Application:
                 self.yolo_rinkaku_corrector.apply_landmark_overrides(face_landmarks)
 
         self.image.flags.writeable = True
+
+        if (
+                self.yolo_rinkaku_corrector.enabled
+                and self.yolo_rinkaku_corrector.use_mask_edge_inpaint):
+            edge_rgb = self.get_yolo_edge_inpaint_rgb()
+            self.rgb_image_for_display = self.yolo_rinkaku_corrector.apply_edge_inpaint(
+                self.rgb_image_for_display,
+                edge_rgb)
 
         # YOLO特徴点デバッグ表示（chin/right と輪郭線）
         if self.yolo_rinkaku_corrector.draw_debug_overlay:
@@ -789,7 +801,7 @@ class Application:
             cv2.putText(image, str(landmark_id), (x + 6, y - 6),
                        cv2.FONT_HERSHEY_SIMPLEX, 0.35, (255, 255, 255), 1, cv2.LINE_AA)
 
-    def sample_texture_reference_color_stats(self, texture_path):
+    def sample_texture_reference_color_stats(self, texture_path, landmark_ids=None):
         img = cv2.imread(texture_path, cv2.IMREAD_UNCHANGED)
         if img is None:
             return None
@@ -806,7 +818,7 @@ class Application:
             return self.sample_landmarks_rgb(
                 rgb_image,
                 results.multi_face_landmarks[0],
-                self.skin_landmarks)
+                landmark_ids or self.skin_landmarks)
 
         h, w = rgb_image.shape[:2]
         radius = max(self.color_match_patch_radius * 2, 10)
@@ -819,6 +831,7 @@ class Application:
 
     def initialize_model_color_reference(self):
         self.model_reference_rgb = None
+        self.model_edge_reference_rgb = {}
         self.smoothed_target_rgb = None
 
         if not self.use_model_color_match or not hasattr(self, 'model'):
@@ -831,7 +844,16 @@ class Application:
             if rgb is None:
                 continue
             self.model_reference_rgb = rgb
+            self.model_edge_reference_rgb['right'] = self.sample_texture_reference_color_stats(
+                material.tex,
+                self.yolo_rinkaku_corrector.target_landmarks_right)
+            self.model_edge_reference_rgb['left'] = self.sample_texture_reference_color_stats(
+                material.tex,
+                self.yolo_rinkaku_corrector.target_landmarks_left)
             print(f"モデル色補正基準: landmarks={self.skin_landmarks}, RGB={rgb.astype(int).tolist()}")
+            for mode, edge_rgb in self.model_edge_reference_rgb.items():
+                if edge_rgb is not None:
+                    print(f"モデル輪郭色基準({mode}): RGB={edge_rgb.astype(int).tolist()}")
             return
 
         print("モデル色補正基準を取得できませんでした")
@@ -862,8 +884,18 @@ class Application:
             material.update_color_adjustment(
                 self.model_reference_rgb,
                 self.smoothed_target_rgb)
-      
-      
+
+    def get_yolo_edge_inpaint_rgb(self):
+        left_rgb = self.model_edge_reference_rgb.get('right')
+        right_rgb = self.model_edge_reference_rgb.get('left')
+        if left_rgb is not None or right_rgb is not None:
+            return {
+                'left': left_rgb,
+                'right': right_rgb,
+            }
+        return self.model_reference_rgb
+
+
     #
     # セッター
     #  

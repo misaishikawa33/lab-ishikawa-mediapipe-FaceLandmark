@@ -1,0 +1,273 @@
+\documentclass[uplatex,dvipdfmx]{jsarticle}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  backgroundcolor=\color{gray!8}
+}
+
+\title{MediaPipeランドマークに基づくYOLO入力領域の切り抜き}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{目的}
+
+本資料では、マスク輪郭検出に使用しているYOLO処理について、入力画像全体ではなく、MediaPipe FaceMeshで検出した顔領域を切り抜いてからYOLOに入力する処理をまとめる。
+
+カメラから顔が遠い場合、画面全体に対してマスク領域が小さく写る。
+この状態で画像全体をYOLOに入力すると、YOLOから見たマスクの占める割合が小さくなり、検出精度が低下しやすい。
+そこで、MediaPipeで検出済みの顔ランドマークから顔周辺の領域を求め、その領域だけをYOLOに入力することで、マスクを相対的に大きく扱えるようにする。
+
+\section{従来の問題}
+
+従来の処理では、カメラ画像全体をそのままYOLOに入力していた。
+
+\begin{lstlisting}[language=Python]
+results = self.model(target_image, max_det=1, verbose=False)[0]
+\end{lstlisting}
+
+この方法では、顔が画面内で大きく写っている場合は問題になりにくい。
+しかし、顔が遠い場合や入力動画内で顔が小さい場合には、以下の問題が発生する。
+
+\begin{itemize}
+  \item マスク領域が画像全体に対して小さくなり、YOLOが検出しにくくなる
+  \item 輪郭マスクが粗くなり、顎や左右端点の取得が不安定になる
+  \item 背景や他の物体を含む範囲が広く、誤検出の可能性が高くなる
+\end{itemize}
+
+\section{提案手法}
+
+本実装では、すでにMediaPipe FaceMeshで検出している468点のランドマークを利用して、顔全体を囲む矩形領域を求める。
+その矩形に余白を加えた領域を切り抜き、YOLOの入力画像として使用する。
+
+処理の基本的な考え方は以下である。
+
+\begin{enumerate}
+  \item MediaPipe FaceMeshで顔ランドマークを検出する
+  \item 全ランドマークの中から、最も左、右、上、下の座標を求める
+  \item 求めた範囲に余白を追加して、YOLO用の切り抜き領域を作る
+  \item 切り抜いた画像に対してYOLOを実行する
+  \item YOLOの検出結果を、切り抜き画像内の座標から元画像の座標へ戻す
+  \item 既存の輪郭抽出処理とランドマーク補正処理に渡す
+\end{enumerate}
+
+\section{顔領域の計算}
+
+FaceMeshの各ランドマークは、画像幅と画像高さに対して正規化された座標を持つ。
+そのため、実際の画像座標へ変換するには、以下のように画像サイズを掛ける。
+
+\begin{lstlisting}[language=Python]
+x = landmark.x * self.width
+y = landmark.y * self.height
+\end{lstlisting}
+
+全ランドマークの$x$座標と$y$座標を集め、それぞれの最小値と最大値を求める。
+
+\begin{lstlisting}[language=Python]
+x_min = max(0.0, min(xs))
+x_max = min(float(self.width - 1), max(xs))
+y_min = max(0.0, min(ys))
+y_max = min(float(self.height - 1), max(ys))
+\end{lstlisting}
+
+ここで、$x_{min}$は顔ランドマーク群の最も左の位置、$x_{max}$は最も右の位置である。
+同様に、$y_{min}$は最も上の位置、$y_{max}$は最も下の位置である。
+
+したがって、余白を加える前の顔領域の幅と高さは以下で表される。
+
+\begin{equation}
+  W_{face} = x_{max} - x_{min}
+\end{equation}
+
+\begin{equation}
+  H_{face} = y_{max} - y_{min}
+\end{equation}
+
+\section{余白の追加}
+
+ランドマークの範囲ぴったりで切り抜くと、マスク端部や顎下が切れる可能性がある。
+そこで、顔領域の外側に余白を追加する。
+
+実装では、顔の幅と高さのうち大きい方を基準にして、その一定割合を余白としている。
+
+\begin{lstlisting}[language=Python]
+margin = max(crop_w, crop_h) * self.crop_margin_ratio
+\end{lstlisting}
+
+現在の設定では、以下の値を使用している。
+
+\begin{lstlisting}[language=Python]
+crop_margin_ratio = 0.35
+\end{lstlisting}
+
+これは、面積を1.35倍にするという意味ではない。
+顔領域の幅または高さの大きい方に対して35\%を計算し、その値を上下左右に追加するという意味である。
+
+例えば、顔領域の幅が100px、高さが150pxの場合、余白は以下のように計算される。
+
+\begin{equation}
+  margin = \max(100, 150) \times 0.35 = 52.5
+\end{equation}
+
+この余白を左右と上下に加えるため、最終的な切り抜き幅と高さは単純な1.35倍にはならない。
+
+\section{YOLO用切り抜き範囲}
+
+余白を加えた最終的な切り抜き領域は、以下のように求める。
+
+\begin{lstlisting}[language=Python]
+x1 = int(max(0, np.floor(x_min - margin)))
+y1 = int(max(0, np.floor(y_min - margin)))
+x2 = int(min(self.width, np.ceil(x_max + margin)))
+y2 = int(min(self.height, np.ceil(y_max + margin)))
+\end{lstlisting}
+
+ここで、$(x1, y1)$は切り抜き領域の左上座標、$(x2, y2)$は右下座標である。
+画像外にはみ出さないように、左上は0以上、右下は画像サイズ以下に制限している。
+
+実際の切り抜きは、OpenCVの配列スライスを用いて行う。
+
+\begin{lstlisting}[language=Python]
+cropped_image = full_image[y1:y2, x1:x2]
+\end{lstlisting}
+
+この画像がYOLOへ入力される。
+つまり、YOLOは画面全体ではなく、顔とマスク周辺のみを見ることになる。
+
+\section{座標系の変換}
+
+YOLOは、元画像全体ではなく、切り抜いた画像に対して推論を行う。
+そのため、YOLOが返す座標は「元画像の左上」を基準にした座標ではなく、「切り抜き画像の左上」を基準にした座標になる。
+
+例えば、元画像の中から、左上が$(200, 100)$の位置にある領域を切り抜いたとする。
+このとき、切り抜き画像の左上は、YOLOから見ると$(0, 0)$になる。
+しかし、元画像上では、その点は$(200, 100)$である。
+
+\begin{lstlisting}
+元画像上の切り抜き開始位置: (200, 100)
+切り抜き画像内の左上:       (0, 0)
+\end{lstlisting}
+
+つまり、切り抜き画像内の座標を元画像上の座標として扱うには、切り抜き開始位置を足す必要がある。
+これは、切り抜きによって一度ずれた座標の基準を、元画像の基準へ戻す処理である。
+
+実装では、YOLOで得られたマスク輪郭の全点に対して、切り抜き開始位置$(crop\_x1, crop\_y1)$を加算している。
+
+\begin{lstlisting}[language=Python]
+main_contour[:, 0, 0] += crop_x1
+main_contour[:, 0, 1] += crop_y1
+\end{lstlisting}
+
+ここで、\verb|main_contour[:, 0, 0]| は輪郭点すべての$x$座標、\verb|main_contour[:, 0, 1]| は輪郭点すべての$y$座標を表す。
+したがって、すべての輪郭点に対して、$x$方向には\verb|crop_x1|、$y$方向には\verb|crop_y1|を足している。
+
+具体例を示す。
+切り抜き領域の左上が$(200, 100)$で、YOLOが切り抜き画像内の点$(30, 50)$を検出した場合、元画像上の座標は以下になる。
+
+\begin{equation}
+  x = 200 + 30 = 230
+\end{equation}
+
+\begin{equation}
+  y = 100 + 50 = 150
+\end{equation}
+
+したがって、切り抜き画像内で$(30, 50)$だった点は、元画像上では$(230, 150)$になる。
+この変換を行うことで、後続の顎点、左右端点、輪郭線の抽出処理は、従来と同じ元画像座標系で処理できる。
+
+\section{実装箇所}
+
+主な処理は \verb|YoloRinkakuCorrector.py| に追加した。
+\verb|Application.py| 側では、YOLO処理を呼び出すときに、すでに検出済みのFaceMeshランドマークを渡すだけにしている。
+これにより、YOLOに関する処理の大部分を \verb|YoloRinkakuCorrector.py| に集約している。
+
+切り抜き領域の計算は以下の関数で行う。
+
+\begin{lstlisting}[language=Python]
+def get_landmark_crop_rect(self, face_landmarks):
+    ...
+    return x1, y1, x2, y2
+\end{lstlisting}
+
+YOLOへ渡す画像の準備は以下の関数で行う。
+
+\begin{lstlisting}[language=Python]
+def prepare_yolo_input(self, bgr_image, face_landmarks):
+    ...
+    return full_image[y1:y2, x1:x2], crop_rect
+\end{lstlisting}
+
+YOLOの推論結果を元画像座標へ戻した後は、既存のマスク輪郭処理に渡す。
+そのため、輪郭点から顎点や左右端点を求める処理、およびMediaPipeランドマークを補正する処理は、従来の流れをそのまま利用できる。
+
+\section{確認用画像}
+
+処理内容を確認するため、テスト用に1枚だけ確認画像を保存できるようにした。
+保存先は以下である。
+
+\begin{lstlisting}
+output/landmark_crop_debug.png
+\end{lstlisting}
+
+確認画像では、以下のように描画する。
+
+\begin{itemize}
+  \item 緑色の点: MediaPipe FaceMeshで検出した全ランドマーク
+  \item 赤色の点: 切り抜き領域の基準となる最左、最右、最上、最下のランドマーク
+  \item オレンジ色の矩形: 余白を加えたYOLO入力用の最終切り抜き領域
+\end{itemize}
+
+これにより、どのランドマークを基準にして切り抜き範囲を作っているか、また余白を加えた後の領域にマスク全体が含まれているかを視覚的に確認できる。
+
+\section{有効化設定}
+
+YOLO入力の切り抜き処理は、以下の設定で有効化する。
+
+\begin{lstlisting}[language=Python]
+use_landmark_crop = True
+\end{lstlisting}
+
+この値が \verb|False| の場合は、従来通り画像全体をYOLOに入力する。
+切り抜き処理を使用する場合は、\verb|YoloRinkakuCorrector| の初期化時に \verb|use_landmark_crop=True| とする。
+
+\section{期待される効果}
+
+本手法により、顔が遠くにある場合でも、YOLO入力画像内ではマスク領域が相対的に大きくなる。
+そのため、以下の効果が期待できる。
+
+\begin{itemize}
+  \item 遠距離時のマスク検出精度の向上
+  \item 背景を含む範囲が減ることによる誤検出の低減
+  \item 輪郭点、顎点、左右端点の取得安定化
+  \item 既存の輪郭補正処理を大きく変更せずに利用できる
+\end{itemize}
+
+\section{注意点}
+
+この方法は、MediaPipe FaceMeshが顔を検出できていることを前提としている。
+FaceMeshが顔を検出できない場合やランドマーク範囲が不正な場合には、切り抜き領域を作成できない。
+その場合は、従来通り画像全体をYOLOへ入力する。
+
+また、余白が小さすぎるとマスク端部や顎下が切れる可能性がある。
+一方で、余白が大きすぎると背景を多く含み、切り抜きの効果が弱くなる。
+そのため、\verb|crop_margin_ratio| は入力映像や顔の大きさに応じて調整する必要がある。
+
+\section{まとめ}
+
+MediaPipe FaceMeshで検出した顔ランドマークを用いて、YOLO入力用の顔周辺領域を切り抜く処理を実装した。
+全ランドマークの最左、最右、最上、最下座標から顔領域を求め、余白を追加した領域をYOLOに入力する。
+YOLOの出力座標は切り抜き画像内の座標であるため、切り抜き開始位置を加算して元画像座標へ戻す。
+
+この処理により、遠距離でマスクが小さく写る場合でも、YOLOに対してマスクを相対的に大きく見せることができ、マスク輪郭検出の安定化が期待できる。
+
+\end{document}

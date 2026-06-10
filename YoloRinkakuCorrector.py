@@ -23,7 +23,12 @@ class YoloRinkakuCorrector:
             target_landmarks_left=None,
             draw_debug_overlay=True,
             use_landmark_crop=False, # YOLO入力をランドマークに基づいて切り抜き
-            crop_margin_ratio=0.35):
+            crop_margin_ratio=0.35,
+            use_mask_edge_inpaint=False,# inpaintでマスクの端をなじませる
+            edge_inpaint_erode=30,
+            edge_inpaint_radius=1,
+            edge_color_blend_alpha=1,
+            edge_color_feather=0):
         self.width = width
         self.height = height
         self.enabled = enabled
@@ -38,6 +43,11 @@ class YoloRinkakuCorrector:
         self.draw_debug_overlay = draw_debug_overlay
         self.use_landmark_crop = use_landmark_crop
         self.crop_margin_ratio = crop_margin_ratio
+        self.use_mask_edge_inpaint = use_mask_edge_inpaint
+        self.edge_inpaint_erode = edge_inpaint_erode
+        self.edge_inpaint_radius = edge_inpaint_radius
+        self.edge_color_blend_alpha = edge_color_blend_alpha
+        self.edge_color_feather = edge_color_feather
 
         self.target_landmarks_right = target_landmarks_right or [
             111, 116, 123, 147, 213, 192, 138, 135, 169, 150, 149, 176, 148, 152
@@ -63,6 +73,8 @@ class YoloRinkakuCorrector:
         self.latest_yolo_keypoints = None
         self.latest_rinkaku_points = []
         self.latest_crop_rect = None
+        self.latest_mask_contour = None
+        self.latest_rinkaku_mode = None
         self.landmark_overrides_px = {}
         self.landmark_overrides_loaded = False
 
@@ -320,13 +332,80 @@ class YoloRinkakuCorrector:
     def reset_latest_detection(self, keep_crop=False):
         self.latest_yolo_keypoints = None
         self.latest_rinkaku_points = []
+        self.latest_mask_contour = None
+        self.latest_rinkaku_mode = None
         if not keep_crop:
             self.latest_crop_rect = None
+
+    def apply_edge_inpaint(self, rgb_image, edge_rgb=None):
+        if (
+                not self.use_mask_edge_inpaint
+                or rgb_image is None
+                or self.latest_mask_contour is None):
+            return rgb_image
+
+        h, w = rgb_image.shape[:2]
+        mask = np.zeros((h, w), dtype=np.uint8)
+        contour = np.array(self.latest_mask_contour, dtype=np.int32)
+        cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
+
+        if self.edge_inpaint_erode > 0:
+            kernel_size = self.edge_inpaint_erode * 2 + 1
+            kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
+            inner_mask = cv2.erode(mask, kernel, iterations=1)
+            edge_mask = cv2.subtract(mask, inner_mask)
+        else:
+            edge_mask = mask
+
+        if np.count_nonzero(edge_mask) == 0:
+            return rgb_image
+
+        inpainted = cv2.inpaint(
+            rgb_image,
+            edge_mask,
+            self.edge_inpaint_radius,
+            cv2.INPAINT_TELEA)
+
+        if edge_rgb is None or self.edge_color_blend_alpha <= 0:
+            return inpainted
+
+        alpha = min(1.0, max(0.0, self.edge_color_blend_alpha))
+        alpha_mask = edge_mask.astype(np.float32) / 255.0
+        if self.edge_color_feather > 0:
+            kernel_size = self.edge_color_feather * 2 + 1
+            alpha_mask = cv2.GaussianBlur(alpha_mask, (kernel_size, kernel_size), 0)
+        alpha_mask = (alpha_mask * alpha)[..., None]
+
+        if isinstance(edge_rgb, dict):
+            left_rgb = edge_rgb.get('left')
+            right_rgb = edge_rgb.get('right')
+            if left_rgb is None and right_rgb is None:
+                return inpainted
+            if left_rgb is None:
+                left_rgb = right_rgb
+            if right_rgb is None:
+                right_rgb = left_rgb
+
+            x_values = np.linspace(0.0, 1.0, w, dtype=np.float32)
+            x_values = np.tile(x_values[None, :, None], (h, 1, 1))
+            left_rgb = np.asarray(left_rgb, dtype=np.float32)
+            right_rgb = np.asarray(right_rgb, dtype=np.float32)
+            edge_rgb = left_rgb * (1.0 - x_values) + right_rgb * x_values
+            if self.edge_color_feather > 0:
+                kernel_size = self.edge_color_feather * 2 + 1
+                edge_rgb = cv2.GaussianBlur(edge_rgb, (kernel_size, kernel_size), 0)
+        else:
+            edge_rgb = np.asarray(edge_rgb, dtype=np.float32)
+
+        blended = inpainted.astype(np.float32)
+        blended = blended * (1.0 - alpha_mask) + edge_rgb * alpha_mask
+        return np.clip(blended, 0, 255).astype(np.uint8)
 
     def update_landmark_overrides_from_yolo(self, bgr_image, rinkaku_mode='right', face_landmarks=None):
         if not self.available or self.model is None or bgr_image is None:
             self.reset_latest_detection()
             return False, {}
+        self.latest_rinkaku_mode = rinkaku_mode
 
         target_image, crop_rect = self.prepare_yolo_input(bgr_image, face_landmarks)
         crop_x1, crop_y1, crop_x2, crop_y2 = crop_rect
@@ -373,6 +452,7 @@ class YoloRinkakuCorrector:
         if not keypoints:
             self.reset_latest_detection(keep_crop=True)
             return False, {}
+        self.latest_mask_contour = best_contour.copy()
 
         mode_config = self.mode_config.get(rinkaku_mode, self.mode_config['right'])
         contour_start_point = keypoints.get(mode_config['start_key'])
