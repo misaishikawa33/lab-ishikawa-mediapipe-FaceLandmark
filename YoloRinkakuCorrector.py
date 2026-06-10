@@ -21,14 +21,16 @@ class YoloRinkakuCorrector:
             yaw_threshold_pos=20,
             target_landmarks_right=None,
             target_landmarks_left=None,
+            target_landmarks_upper=None,
             draw_debug_overlay=True,
-            use_landmark_crop=False, # YOLO入力をランドマークに基づいて切り抜き
+            use_landmark_crop=True, # YOLO入力をランドマークに基づいて切り抜き
             crop_margin_ratio=0.35,
-            use_mask_edge_inpaint=False,# inpaintでマスクの端をなじませる
+            use_mask_edge_inpaint=False,# マスクの端を輪郭ランドマーク色でなじませる
             edge_inpaint_erode=30,
             edge_inpaint_radius=1,
             edge_color_blend_alpha=1,
-            edge_color_feather=0):
+            edge_color_feather=3,
+            edge_landmark_color_radius=3):
         self.width = width
         self.height = height
         self.enabled = enabled
@@ -48,12 +50,18 @@ class YoloRinkakuCorrector:
         self.edge_inpaint_radius = edge_inpaint_radius
         self.edge_color_blend_alpha = edge_color_blend_alpha
         self.edge_color_feather = edge_color_feather
+        self.edge_landmark_color_radius = edge_landmark_color_radius
 
         self.target_landmarks_right = target_landmarks_right or [
             111, 116, 123, 147, 213, 192, 138, 135, 169, 150, 149, 176, 148, 152
         ]
         self.target_landmarks_left = target_landmarks_left or [
             340, 345, 352, 376, 411, 427, 416, 434, 364, 394, 369, 400, 377, 152
+        ]
+        self.target_landmarks_upper = target_landmarks_upper or [
+            6, 31, 111, 112, 116, 122, 227, 228, 229, 230,
+            231, 232, 233, 234, 244, 261, 340, 341, 345, 351,
+            448, 449, 450, 451, 452, 453, 454, 464, 465
         ]
         self.mode_config = {
             'right': {
@@ -337,7 +345,59 @@ class YoloRinkakuCorrector:
         if not keep_crop:
             self.latest_crop_rect = None
 
-    def apply_edge_inpaint(self, rgb_image, edge_rgb=None):
+    def collect_edge_landmark_colors(self, rgb_image, face_landmarks, landmark_color_map=None):
+        if rgb_image is None or face_landmarks is None:
+            return None, None
+
+        h, w = rgb_image.shape[:2]
+        landmark_ids = list(dict.fromkeys(
+            self.target_landmarks_right
+            + self.target_landmarks_left
+            + self.target_landmarks_upper))
+        points = []
+        colors = []
+        radius = max(1, int(self.edge_landmark_color_radius))
+
+        for landmark_id in landmark_ids:
+            if landmark_id >= len(face_landmarks.landmark):
+                continue
+
+            landmark = face_landmarks.landmark[landmark_id]
+            x = int(landmark.x * w)
+            y = int(landmark.y * h)
+            if x < 0 or x >= w or y < 0 or y >= h:
+                continue
+
+            points.append([x, y])
+            if landmark_color_map is not None:
+                if landmark_id not in landmark_color_map:
+                    points.pop()
+                    continue
+                colors.append(np.asarray(landmark_color_map[landmark_id], dtype=np.float32))
+            else:
+                x1 = max(0, x - radius)
+                y1 = max(0, y - radius)
+                x2 = min(w, x + radius + 1)
+                y2 = min(h, y + radius + 1)
+                patch = rgb_image[y1:y2, x1:x2, :3]
+                if patch.size == 0:
+                    points.pop()
+                    continue
+                colors.append(np.median(patch.reshape(-1, 3), axis=0))
+
+        if not points:
+            return None, None
+
+        return (
+            np.asarray(points, dtype=np.float32),
+            np.asarray(colors, dtype=np.float32))
+
+    def apply_edge_inpaint(
+            self,
+            rgb_image,
+            edge_rgb=None,
+            face_landmarks=None,
+            edge_landmark_colors=None):
         if (
                 not self.use_mask_edge_inpaint
                 or rgb_image is None
@@ -360,45 +420,59 @@ class YoloRinkakuCorrector:
         if np.count_nonzero(edge_mask) == 0:
             return rgb_image
 
-        inpainted = cv2.inpaint(
-            rgb_image,
-            edge_mask,
-            self.edge_inpaint_radius,
-            cv2.INPAINT_TELEA)
-
-        if edge_rgb is None or self.edge_color_blend_alpha <= 0:
-            return inpainted
-
         alpha = min(1.0, max(0.0, self.edge_color_blend_alpha))
         alpha_mask = edge_mask.astype(np.float32) / 255.0
         if self.edge_color_feather > 0:
             kernel_size = self.edge_color_feather * 2 + 1
             alpha_mask = cv2.GaussianBlur(alpha_mask, (kernel_size, kernel_size), 0)
+            alpha_mask = alpha_mask * (mask.astype(np.float32) / 255.0)
         alpha_mask = (alpha_mask * alpha)[..., None]
 
-        if isinstance(edge_rgb, dict):
-            left_rgb = edge_rgb.get('left')
-            right_rgb = edge_rgb.get('right')
-            if left_rgb is None and right_rgb is None:
-                return inpainted
-            if left_rgb is None:
-                left_rgb = right_rgb
-            if right_rgb is None:
-                right_rgb = left_rgb
+        landmark_points, landmark_colors = self.collect_edge_landmark_colors(
+            rgb_image,
+            face_landmarks,
+            edge_landmark_colors)
 
-            x_values = np.linspace(0.0, 1.0, w, dtype=np.float32)
-            x_values = np.tile(x_values[None, :, None], (h, 1, 1))
-            left_rgb = np.asarray(left_rgb, dtype=np.float32)
-            right_rgb = np.asarray(right_rgb, dtype=np.float32)
-            edge_rgb = left_rgb * (1.0 - x_values) + right_rgb * x_values
-            if self.edge_color_feather > 0:
-                kernel_size = self.edge_color_feather * 2 + 1
-                edge_rgb = cv2.GaussianBlur(edge_rgb, (kernel_size, kernel_size), 0)
+        color_layer = rgb_image.astype(np.float32)
+        ys, xs = np.nonzero(edge_mask)
+
+        if landmark_points is not None:
+            coords = np.stack([xs, ys], axis=1).astype(np.float32)
+            distances = coords[:, None, :] - landmark_points[None, :, :]
+            distances = np.sum(distances * distances, axis=2)
+            k = min(3, landmark_points.shape[0])
+            nearest_indices = np.argpartition(distances, k - 1, axis=1)[:, :k]
+            nearest_distances = np.take_along_axis(distances, nearest_indices, axis=1)
+            weights = 1.0 / (np.sqrt(nearest_distances) + 1.0)
+            weights = weights / np.sum(weights, axis=1, keepdims=True)
+            nearest_colors = landmark_colors[nearest_indices]
+            fill_colors = np.sum(nearest_colors * weights[:, :, None], axis=1)
+            color_layer[ys, xs] = fill_colors
+        elif edge_rgb is not None:
+            if isinstance(edge_rgb, dict):
+                left_rgb = edge_rgb.get('left')
+                right_rgb = edge_rgb.get('right')
+                if left_rgb is None and right_rgb is None:
+                    return rgb_image
+                if left_rgb is None:
+                    left_rgb = right_rgb
+                if right_rgb is None:
+                    right_rgb = left_rgb
+                left_rgb = np.asarray(left_rgb, dtype=np.float32)
+                right_rgb = np.asarray(right_rgb, dtype=np.float32)
+                x_weights = (xs.astype(np.float32) / max(1, w - 1))[:, None]
+                color_layer[ys, xs] = left_rgb * (1.0 - x_weights) + right_rgb * x_weights
+            else:
+                color_layer[ys, xs] = np.asarray(edge_rgb, dtype=np.float32)
         else:
-            edge_rgb = np.asarray(edge_rgb, dtype=np.float32)
+            return rgb_image
 
-        blended = inpainted.astype(np.float32)
-        blended = blended * (1.0 - alpha_mask) + edge_rgb * alpha_mask
+        if self.edge_color_feather > 0:
+            kernel_size = self.edge_color_feather * 2 + 1
+            color_layer = cv2.GaussianBlur(color_layer, (kernel_size, kernel_size), 0)
+
+        source = rgb_image.astype(np.float32)
+        blended = source * (1.0 - alpha_mask) + color_layer * alpha_mask
         return np.clip(blended, 0, 255).astype(np.uint8)
 
     def update_landmark_overrides_from_yolo(self, bgr_image, rinkaku_mode='right', face_landmarks=None):

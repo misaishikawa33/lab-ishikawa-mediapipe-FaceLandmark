@@ -1,0 +1,431 @@
+\documentclass[uplatex,dvipdfmx]{jsarticle}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{url}
+\usepackage{listings}
+\usepackage{xcolor}
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  frame=single,
+  columns=fullflexible,
+  backgroundcolor=\color{gray!8}
+}
+
+\title{YOLOマスク端部に対する輪郭ランドマーク色ブレンド}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{目的}
+
+本資料では、YOLOで検出したマスク領域の端部に対して、輪郭ランドマークの色を用いて補正する処理をまとめる。
+
+マスクを着用した顔画像に対して3次元顔モデルを描画すると、マスクの端が顔やモデルの境界にはみ出して見える場合がある。
+特に横顔では、顔モデルの輪郭と実画像上のマスク端が重なり、マスクの白い境界が目立ちやすい。
+
+そこで、YOLOで検出したマスク領域のうち、外周に近い部分だけを補正対象とする。
+補正色には、カメラ画像の色ではなく、モデルに使用しているテクスチャ画像から取得した輪郭ランドマークの色を用いる。
+これにより、補正部分を描画モデルの色味に近づけることを目的とする。
+
+\section{処理の概要}
+
+本処理は、\texttt{YoloRinkakuCorrector.py} の \texttt{use\_mask\_edge\_inpaint} によって切り替える。
+
+\begin{lstlisting}[language=Python]
+use_mask_edge_inpaint=True
+\end{lstlisting}
+
+変数名には \texttt{inpaint} が含まれているが、現在の実装では \texttt{cv2.inpaint()} は使用していない。
+現在は、YOLOマスクの端領域に対して、近い輪郭ランドマークの色を参照して色を付ける処理である。
+
+処理の流れは以下である。
+
+\begin{enumerate}
+  \item YOLOでマスク領域を検出する
+  \item 検出したマスクから端部だけの領域を作成する
+  \item モデルテクスチャ画像から輪郭ランドマークごとの色を取得する
+  \item カメラ画像上のFaceMeshランドマーク座標を用いて、各ランドマークの現在位置を求める
+  \item マスク端部の各ピクセルについて、近いランドマークを探索する
+  \item 近いランドマークのテクスチャ色を距離で重み付けして混ぜる
+  \item 平滑化して、マスク端部だけに反映する
+\end{enumerate}
+
+\section{マスク領域の取得}
+
+YOLOの推論結果からマスク画像を取得し、輪郭を抽出する。
+検出された輪郭は、元画像上の座標へ戻したうえで保存する。
+
+\begin{lstlisting}[language=Python]
+self.latest_mask_contour = best_contour.copy()
+\end{lstlisting}
+
+この \texttt{latest\_mask\_contour} が、後続の端部補正で使用するマスク領域の基準になる。
+
+端部補正時には、この輪郭を塗りつぶして2値マスクを作成する。
+
+\begin{lstlisting}[language=Python]
+mask = np.zeros((h, w), dtype=np.uint8)
+contour = np.array(self.latest_mask_contour, dtype=np.int32)
+cv2.drawContours(mask, [contour], -1, 255, thickness=cv2.FILLED)
+\end{lstlisting}
+
+ここで、\texttt{mask} はYOLOがマスクとして検出した領域全体を表す。
+
+\section{端部領域の作成}
+
+補正するのはマスク全体ではなく、マスクの端だけである。
+そのため、マスク全体を内側に縮小した \texttt{inner\_mask} を作成し、元のマスクとの差分を取る。
+
+\begin{lstlisting}[language=Python]
+kernel_size = self.edge_inpaint_erode * 2 + 1
+kernel = np.ones((kernel_size, kernel_size), dtype=np.uint8)
+inner_mask = cv2.erode(mask, kernel, iterations=1)
+edge_mask = cv2.subtract(mask, inner_mask)
+\end{lstlisting}
+
+このとき、
+
+\begin{equation}
+  edge\_mask = mask - inner\_mask
+\end{equation}
+
+となる。
+
+\texttt{edge\_mask} が、実際に色を付ける対象領域である。
+\texttt{edge\_inpaint\_erode} が大きいほど、マスクの内側まで広く補正される。
+
+例えば、
+
+\begin{lstlisting}[language=Python]
+edge_inpaint_erode = 30
+\end{lstlisting}
+
+の場合、マスクの外周から内側へ約30ピクセル程度の範囲が補正対象になる。
+
+\section{使用する輪郭ランドマーク}
+
+色の候補として使用するランドマークは、右側輪郭、左側輪郭、上部領域の3種類である。
+
+右側輪郭ランドマークは以下である。
+
+\begin{lstlisting}[language=Python]
+self.target_landmarks_right = [
+    111, 116, 123, 147, 213, 192, 138, 135,
+    169, 150, 149, 176, 148, 152
+]
+\end{lstlisting}
+
+左側輪郭ランドマークは以下である。
+
+\begin{lstlisting}[language=Python]
+self.target_landmarks_left = [
+    340, 345, 352, 376, 411, 427, 416, 434,
+    364, 394, 369, 400, 377, 152
+]
+\end{lstlisting}
+
+さらに、マスク上部の色補正に対応するため、上部ランドマークを追加している。
+
+\begin{lstlisting}[language=Python]
+self.target_landmarks_upper = [
+    6, 31, 111, 112, 116, 122, 227, 228, 229, 230,
+    231, 232, 233, 234, 244, 261, 340, 341, 345, 351,
+    448, 449, 450, 451, 452, 453, 454, 464, 465
+]
+\end{lstlisting}
+
+端部補正では、これらをまとめて候補にする。
+重複するランドマークIDは、内部で1回だけ使用する。
+
+\begin{lstlisting}[language=Python]
+landmark_ids = list(dict.fromkeys(
+    self.target_landmarks_right
+    + self.target_landmarks_left
+    + self.target_landmarks_upper))
+\end{lstlisting}
+
+\section{テクスチャ画像からの色取得}
+
+補正に使用する色は、カメラ画像からではなく、モデルに使用しているテクスチャ画像から取得する。
+これは、補正した領域を実写のマスク色ではなく、描画モデルの色味に合わせるためである。
+
+\texttt{Application.py} では、モデル初期化時にテクスチャ画像を読み込み、FaceMeshを適用する。
+その後、各輪郭ランドマークの周辺画素から色を取得する。
+
+\begin{lstlisting}[language=Python]
+colors[landmark_id] = np.median(
+    patch.astype('float32').reshape(-1, 3),
+    axis=0)
+\end{lstlisting}
+
+ここでは平均値ではなく中央値を使用している。
+中央値を使うことで、ノイズや局所的な明るい画素、暗い画素の影響を受けにくくする。
+
+色を取得する範囲は、以下の値で決まる。
+
+\begin{lstlisting}[language=Python]
+edge_landmark_color_radius = 3
+\end{lstlisting}
+
+この値が3の場合、ランドマーク点を中心とした縦7ピクセル、横7ピクセルの範囲から色を取得する。
+
+\section{毎フレームの色更新}
+
+テクスチャ画像から取得した色は、初期値として保存される。
+しかし、描画モデルのテクスチャ色は、カメラ画像の肌色に合わせて毎フレーム補正される。
+そのため、マスク端部に使用するランドマーク色も、同じ色補正式で毎フレーム更新する。
+
+\begin{lstlisting}[language=Python]
+rgb = (rgb - self.model_reference_rgb) + self.smoothed_target_rgb
+\end{lstlisting}
+
+ここで、各変数の意味は以下である。
+
+\begin{itemize}
+  \item \texttt{rgb} は、テクスチャ画像から取得した輪郭ランドマーク色である
+  \item \texttt{model\_reference\_rgb} は、テクスチャ画像側の肌色基準である
+  \item \texttt{smoothed\_target\_rgb} は、カメラ画像側から毎フレーム取得した肌色基準である
+\end{itemize}
+
+この処理により、補正に使用する色は、テクスチャ画像を基準としながら、現在のカメラ映像に合わせたモデル色補正後の色味へ更新される。
+
+\section{近いランドマーク色の参照}
+
+マスク端部の各ピクセルについて、近いランドマークを探索する。
+その際、ランドマークの位置はカメラ画像上のFaceMesh座標を使用する。
+一方で、ランドマークの色はテクスチャ画像から取得した色を使用する。
+
+つまり、位置と色の基準は以下のように分かれている。
+
+\begin{itemize}
+  \item 位置は、カメラ画像上のFaceMeshランドマーク座標を使用する
+  \item 色は、テクスチャ画像上の同じランドマークIDから取得した色を使用する
+\end{itemize}
+
+これは、色の基準と距離計算の基準が異なるという意味である。
+距離計算では、現在のカメラ画像上での位置関係を使用する。
+そのため、顔の大きさや向きが変わっても、マスク端部のピクセルに近いランドマークを、現在のフレーム上の位置から選べる。
+
+一方で、実際に塗る色はカメラ画像から取らない。
+カメラ画像にはマスクの白色や影が含まれるため、その色を使うと補正部分がモデルになじみにくくなる。
+そこで、色はモデルのテクスチャ画像から取得したランドマーク色を使用する。
+
+例えば、マスク端部のあるピクセルがカメラ画像上で$(240, 180)$にあるとする。
+このとき、ランドマーク111がカメラ画像上で$(230, 175)$、ランドマーク116が$(260, 190)$にある場合、距離計算はこれらのカメラ画像上の座標で行う。
+しかし、ランドマーク111や116に対応する色は、カメラ画像ではなくテクスチャ画像から取得した色を使用する。
+
+つまり、本処理では以下のように分けている。
+
+\begin{itemize}
+  \item どのランドマークが近いかは、カメラ画像上のピクセル座標で決める
+  \item そのランドマークの色は、テクスチャ画像から取得した色を使う
+\end{itemize}
+
+端部領域のピクセル座標を取り出す処理は以下である。
+
+\begin{lstlisting}[language=Python]
+ys, xs = np.nonzero(edge_mask)
+coords = np.stack([xs, ys], axis=1).astype(np.float32)
+\end{lstlisting}
+
+各ピクセルと各ランドマークの距離を計算する。
+
+\begin{lstlisting}[language=Python]
+distances = coords[:, None, :] - landmark_points[None, :, :]
+distances = np.sum(distances * distances, axis=2)
+\end{lstlisting}
+
+その後、近いランドマーク3点を選択する。
+
+\begin{lstlisting}[language=Python]
+k = min(3, landmark_points.shape[0])
+nearest_indices = np.argpartition(distances, k - 1, axis=1)[:, :k]
+\end{lstlisting}
+
+3点を使用する理由は、1点だけの色を使うと領域が単色に近くなり、ベタ塗りに見えやすいためである。
+複数点の色を距離に応じて混ぜることで、色分布をなだらかにする。
+
+\section{距離による重み付け}
+
+近いランドマークの色は、距離に応じて重み付けする。
+近いランドマークほど大きな重みを持ち、遠いランドマークほど小さな重みになる。
+
+\begin{lstlisting}[language=Python]
+weights = 1.0 / (np.sqrt(nearest_distances) + 1.0)
+weights = weights / np.sum(weights, axis=1, keepdims=True)
+\end{lstlisting}
+
+この式により、各重みの合計は1になる。
+最終的な補正色は、近いランドマーク3点の色の加重平均として求める。
+
+\begin{lstlisting}[language=Python]
+nearest_colors = landmark_colors[nearest_indices]
+fill_colors = np.sum(nearest_colors * weights[:, :, None], axis=1)
+color_layer[ys, xs] = fill_colors
+\end{lstlisting}
+
+\section{平滑化とブレンド}
+
+距離重み付きで作成した色分布は、そのまま使うとランドマーク間の切り替わりが目立つ場合がある。
+そこで、色レイヤーにガウシアンぼかしを適用する。
+
+\begin{lstlisting}[language=Python]
+kernel_size = self.edge_color_feather * 2 + 1
+color_layer = cv2.GaussianBlur(color_layer, (kernel_size, kernel_size), 0)
+\end{lstlisting}
+
+\texttt{edge\_color\_feather} が大きいほど、色分布はなめらかになる。
+ただし、大きすぎると補正部分がぼやけて見えるため、調整が必要である。
+
+最後に、元画像と補正色を混ぜる。
+
+\begin{lstlisting}[language=Python]
+blended = source * (1.0 - alpha_mask) + color_layer * alpha_mask
+\end{lstlisting}
+
+\texttt{alpha\_mask} は、どの範囲にどの程度補正色を反映するかを表す。
+\texttt{edge\_color\_blend\_alpha} が1に近いほど補正色が強く反映され、0に近いほど元画像が残る。
+
+\section{モデル境界ブレンド}
+
+\texttt{use\_mask\_edge\_inpaint} による処理は、YOLOで検出したマスク領域の端部を補正する処理である。
+一方で、\texttt{ModelBoundaryBlender.py} は、描画された3次元モデルの境界を背景になじませるための別の後処理である。
+
+この処理は、以下の2枚の画像を使用する。
+
+\begin{itemize}
+  \item \texttt{rendered\_rgb} は、3次元モデルを描画した後の画像である
+  \item \texttt{background\_rgb} は、3次元モデルを描画する前の背景画像である
+\end{itemize}
+
+実装では、まず2枚の画像の差分を計算する。
+
+\begin{lstlisting}[language=Python]
+diff = cv2.absdiff(rendered_rgb, background_rgb)
+diff_gray = np.max(diff, axis=2).astype(np.uint8)
+\end{lstlisting}
+
+この差分が大きい場所は、3次元モデルが描画された可能性が高い場所である。
+そのため、しきい値処理によってモデル領域のマスクを作成する。
+
+\begin{lstlisting}[language=Python]
+_, mask = cv2.threshold(diff_gray, self.diff_threshold, 255, cv2.THRESH_BINARY)
+\end{lstlisting}
+
+\texttt{diff\_threshold} は、どれくらいの色差をモデル描画領域として扱うかを決める値である。
+値が小さいほど、わずかな差分もモデル領域として検出されやすくなる。
+値が大きいほど、はっきり変化した部分だけがモデル領域として残る。
+
+\section{モデル境界領域の作成}
+
+差分から得られたマスクには、小さなノイズが含まれる場合がある。
+そのため、モルフォロジー処理によって小さなノイズを除去し、穴を埋める。
+
+\begin{lstlisting}[language=Python]
+kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (3, 3))
+mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel)
+mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
+\end{lstlisting}
+
+さらに、面積が小さい領域はノイズとして除外する。
+
+\begin{lstlisting}[language=Python]
+min_area = max(20, int(h * w * self.min_area_ratio))
+\end{lstlisting}
+
+\texttt{min\_area\_ratio} は、画面全体に対してどれくらい小さい領域を無視するかを決める値である。
+
+モデル領域のマスクが得られたら、その境界付近をブレンド対象にする。
+実装では、マスクを内側に縮めた \texttt{inner\_mask} と、外側に広げた \texttt{outer\_mask} を作成する。
+
+\begin{lstlisting}[language=Python]
+inner_mask = cv2.erode(mask, kernel)
+outer_mask = cv2.dilate(mask, kernel)
+blend_region = outer_mask > 0
+\end{lstlisting}
+
+\texttt{edge\_width} は、この処理で使用するカーネルの大きさを決める。
+値が大きいほど、モデル境界の周辺を広くブレンド対象にする。
+
+\section{モデル境界のブレンド}
+
+モデル境界ブレンドでは、モデル描画後の画像と背景画像を、\texttt{alpha} によって混ぜる。
+
+\begin{lstlisting}[language=Python]
+alpha = cv2.GaussianBlur(
+    mask.astype(np.float32) / 255.0,
+    (0, 0),
+    self.blur_sigma)
+\end{lstlisting}
+
+\texttt{blur\_sigma} は、モデル領域から背景領域へ移る境界をどれくらいなめらかにするかを決める値である。
+値が大きいほど境界はなめらかになるが、モデル内部まで背景が混ざりやすくなる。
+そのため、値を大きくしすぎると、モデルが透明になったように見える場合がある。
+
+最後に、以下の式でモデル描画後の画像と背景画像を混ぜる。
+
+\begin{lstlisting}[language=Python]
+blended = rendered * alpha_3ch + background * (1.0 - alpha_3ch)
+\end{lstlisting}
+
+ここで、\texttt{alpha} が1に近い部分ではモデル描画後の画像が強く残る。
+\texttt{alpha} が0に近い部分では背景画像が強く残る。
+\texttt{alpha} が0.5付近の部分では、モデルと背景が半分ずつ混ざる。
+
+したがって、この処理はモデルの形状を変える処理ではない。
+描画済みの画像に対して、モデルの境界だけを背景画像と混ぜてなじませる処理である。
+
+\section{2つのブレンド処理の違い}
+
+\texttt{use\_mask\_edge\_inpaint} と \texttt{ModelBoundaryBlender.py} は、どちらも見た目をなじませるための処理である。
+しかし、対象と目的が異なる。
+
+\begin{itemize}
+  \item \texttt{use\_mask\_edge\_inpaint} は、YOLOで検出したマスク領域の端部を補正する処理である
+  \item \texttt{ModelBoundaryBlender.py} は、描画された3次元モデルの境界を背景となじませる処理である
+\end{itemize}
+
+\texttt{use\_mask\_edge\_inpaint} では、色の基準としてテクスチャ画像のランドマーク色を使う。
+一方、\texttt{ModelBoundaryBlender.py} では、モデル描画後の画像とモデル描画前の背景画像を直接ブレンドする。
+
+そのため、前者はマスクの白い端をモデル色に近づける処理であり、後者はモデル境界を背景へなじませる処理である。
+
+\section{主なパラメータ}
+
+本処理で使用する主なパラメータは以下である。
+
+\begin{lstlisting}[language=Python]
+use_mask_edge_inpaint=True
+edge_inpaint_erode=30
+edge_inpaint_radius=1
+edge_color_blend_alpha=1
+edge_color_feather=10
+edge_landmark_color_radius=3
+\end{lstlisting}
+
+各値の意味は以下である。
+
+\begin{itemize}
+  \item \texttt{use\_mask\_edge\_inpaint} は、マスク端部補正を使用するかどうかを表す
+  \item \texttt{edge\_inpaint\_erode} は、マスク端から内側に何ピクセル程度を補正対象にするかを表す
+  \item \texttt{edge\_inpaint\_radius} は、現在の実装ではほぼ使用していない旧インペイント用の値である
+  \item \texttt{edge\_color\_blend\_alpha} は、補正色を元画像へ反映する強さを表す
+  \item \texttt{edge\_color\_feather} は、補正色と境界の平滑化の強さを表す
+  \item \texttt{edge\_landmark\_color\_radius} は、テクスチャ画像からランドマーク色を取得する周辺範囲を表す
+\end{itemize}
+
+\section{まとめ}
+
+本処理では、YOLOで検出したマスク全体を塗りつぶすのではなく、マスク端部だけを補正対象としている。
+補正色はカメラ画像から取得するのではなく、モデルに使用しているテクスチャ画像の輪郭ランドマーク色を基準にしている。
+
+さらに、マスク端部の各ピクセルに対して、近いランドマーク3点の色を距離で重み付けして混ぜる。
+これにより、1色で塗りつぶす場合に比べて、ベタ塗り感を抑えた補正が可能になる。
+
+この処理は、マスク端部の白い領域がモデル上に残って目立つ問題を軽減し、モデルの輪郭色に近い見た目へなじませるための後処理である。
+
+\end{document}

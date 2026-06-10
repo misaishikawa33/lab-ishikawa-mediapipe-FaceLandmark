@@ -64,6 +64,8 @@ class Application:
         self.color_match_patch_radius = 3
         self.model_reference_rgb = None
         self.model_edge_reference_rgb = {}
+        self.model_edge_landmark_base_colors = {}
+        self.model_edge_landmark_colors = {}
         self.smoothed_target_rgb = None
         self.color_match_smoothing = 0.85
         self.color_match_update_yaw_limit = 15.0
@@ -266,9 +268,14 @@ class Application:
                 self.yolo_rinkaku_corrector.enabled
                 and self.yolo_rinkaku_corrector.use_mask_edge_inpaint):
             edge_rgb = self.get_yolo_edge_inpaint_rgb()
+            edge_face_landmarks = None
+            if self.face_mesh.multi_face_landmarks:
+                edge_face_landmarks = self.face_mesh.multi_face_landmarks[0]
             self.rgb_image_for_display = self.yolo_rinkaku_corrector.apply_edge_inpaint(
                 self.rgb_image_for_display,
-                edge_rgb)
+                edge_rgb,
+                edge_face_landmarks,
+                self.model_edge_landmark_colors)
 
         # YOLO特徴点デバッグ表示（chin/right と輪郭線）
         if self.yolo_rinkaku_corrector.draw_debug_overlay:
@@ -829,9 +836,56 @@ class Application:
         patch = rgb_image[y1:y2, x1:x2, :3].astype('float32')
         return np.median(patch.reshape(-1, 3), axis=0)
 
+    def sample_texture_landmark_colors(self, texture_path, landmark_ids):
+        img = cv2.imread(texture_path, cv2.IMREAD_UNCHANGED)
+        if img is None:
+            return {}
+
+        if img.shape[2] == 4:
+            rgb_image = cv2.cvtColor(img, cv2.COLOR_BGRA2RGB)
+        else:
+            rgb_image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+
+        with mp.solutions.face_mesh.FaceMesh(static_image_mode=True, min_detection_confidence=0.25) as face_mesh:
+            results = face_mesh.process(rgb_image)
+
+        if not results.multi_face_landmarks:
+            return {}
+
+        h, w = rgb_image.shape[:2]
+        face_landmarks = results.multi_face_landmarks[0]
+        radius = max(1, int(self.yolo_rinkaku_corrector.edge_landmark_color_radius))
+        colors = {}
+
+        for landmark_id in landmark_ids:
+            if landmark_id < 0 or landmark_id >= len(face_landmarks.landmark):
+                continue
+
+            landmark = face_landmarks.landmark[landmark_id]
+            x = int(round(landmark.x * w))
+            y = int(round(landmark.y * h))
+            if x < 0 or x >= w or y < 0 or y >= h:
+                continue
+
+            x1 = max(0, x - radius)
+            x2 = min(w, x + radius + 1)
+            y1 = max(0, y - radius)
+            y2 = min(h, y + radius + 1)
+            patch = rgb_image[y1:y2, x1:x2, :3]
+            if patch.size == 0:
+                continue
+
+            colors[landmark_id] = np.median(
+                patch.astype('float32').reshape(-1, 3),
+                axis=0)
+
+        return colors
+
     def initialize_model_color_reference(self):
         self.model_reference_rgb = None
         self.model_edge_reference_rgb = {}
+        self.model_edge_landmark_base_colors = {}
+        self.model_edge_landmark_colors = {}
         self.smoothed_target_rgb = None
 
         if not self.use_model_color_match or not hasattr(self, 'model'):
@@ -850,13 +904,37 @@ class Application:
             self.model_edge_reference_rgb['left'] = self.sample_texture_reference_color_stats(
                 material.tex,
                 self.yolo_rinkaku_corrector.target_landmarks_left)
+            edge_landmark_ids = list(dict.fromkeys(
+                self.yolo_rinkaku_corrector.target_landmarks_right
+                + self.yolo_rinkaku_corrector.target_landmarks_left
+                + self.yolo_rinkaku_corrector.target_landmarks_upper))
+            self.model_edge_landmark_base_colors = self.sample_texture_landmark_colors(
+                material.tex,
+                edge_landmark_ids)
+            self.model_edge_landmark_colors = dict(self.model_edge_landmark_base_colors)
             print(f"モデル色補正基準: landmarks={self.skin_landmarks}, RGB={rgb.astype(int).tolist()}")
             for mode, edge_rgb in self.model_edge_reference_rgb.items():
                 if edge_rgb is not None:
                     print(f"モデル輪郭色基準({mode}): RGB={edge_rgb.astype(int).tolist()}")
+            print(f"モデル輪郭ランドマーク色数: {len(self.model_edge_landmark_colors)}")
             return
 
         print("モデル色補正基準を取得できませんでした")
+
+    def update_model_edge_landmark_colors(self):
+        if (
+                self.model_reference_rgb is None
+                or self.smoothed_target_rgb is None
+                or not self.model_edge_landmark_base_colors):
+            return
+
+        updated_colors = {}
+        for landmark_id, base_rgb in self.model_edge_landmark_base_colors.items():
+            rgb = np.asarray(base_rgb, dtype=np.float32)
+            rgb = (rgb - self.model_reference_rgb) + self.smoothed_target_rgb
+            updated_colors[landmark_id] = np.clip(rgb, 0, 255)
+
+        self.model_edge_landmark_colors = updated_colors
 
     def update_model_color_match(self, rgb_image, face_landmarks):
         if not self.use_model_color_match or self.model_reference_rgb is None:
@@ -884,6 +962,8 @@ class Application:
             material.update_color_adjustment(
                 self.model_reference_rgb,
                 self.smoothed_target_rgb)
+
+        self.update_model_edge_landmark_colors()
 
     def get_yolo_edge_inpaint_rgb(self):
         left_rgb = self.model_edge_reference_rgb.get('right')

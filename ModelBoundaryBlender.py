@@ -14,8 +14,8 @@ class ModelBoundaryBlender:
             self,
             enabled=True,
             diff_threshold=1,
-            edge_width=28,
-            blur_sigma=12.0,
+            edge_width=20,#境界の幅（ピクセル）
+            blur_sigma=7,#境界のぼかしの幅
             min_area_ratio=0.001):
         self.enabled = enabled
         self.diff_threshold = diff_threshold
