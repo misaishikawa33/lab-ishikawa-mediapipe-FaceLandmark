@@ -67,7 +67,7 @@ class Application:
         self.model_edge_landmark_base_colors = {}
         self.model_edge_landmark_colors = {}
         self.smoothed_target_rgb = None
-        self.color_match_smoothing = 0.85
+        self.color_match_smoothing = 0.85 
         self.color_match_update_yaw_limit = 15.0
         self.draw_skin_landmarks = False
 
@@ -1112,7 +1112,7 @@ class Application:
         cv2.putText(image, f"[B] Boundary Blend: {boundary_status}", (text_x, y_offset),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.5, boundary_color, 1)
         y_offset += line_height
-        
+
         # 対応点モード (Pキー)
         point_mode_names = {0: "All Points", 1: "Right Points", 2: "Left Points", 3: "Eye Points"}
         point_mode = point_mode_names.get(self.detect_stable, "Unknown")
