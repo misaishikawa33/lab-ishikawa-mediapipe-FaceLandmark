@@ -6,6 +6,7 @@ import cv2
 import numpy as np
 
 
+
 MARKER_IDS = {
     0: "left_top",
     1: "right_top",
