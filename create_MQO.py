@@ -5,6 +5,7 @@ import cv2
 import mediapipe as mp
 import datetime
 import os
+from ReferenceEdgeColorCompleter import ReferenceEdgeColorCompleter
 
 #
 # ３次元モデル生成クラス
@@ -15,8 +16,17 @@ class CreateMQO:
     #
     # @param texture : テクスチャ画像
     # @param use_edge_texture_extension : 顔端の黒化対策としてテクスチャ外挿を行うか
+    # @param use_reference_edge_color_completion : 参照横顔画像から輪郭ランドマーク周辺の色を補完するか
     #
-    def __init__(self, texture, use_edge_texture_extension=True):
+    def __init__(
+            self,
+            texture,
+            use_edge_texture_extension=True,
+            use_reference_edge_color_completion=False,
+            reference_left_image_path='mqodata/face7.jpg',
+            reference_right_image_path='mqodata/face22.jpg',
+            reference_edge_color_source_mode='outer',
+            draw_reference_edge_color_debug_landmarks=False):
         
         # 顔下部切り取りを行うか
         self.use_cut = True
@@ -26,6 +36,14 @@ class CreateMQO:
         self.world_coordinate = False
         # 顔端の黒化対策としてテクスチャ外挿を行うか
         self.use_edge_texture_extension = use_edge_texture_extension
+        # 横向き参照画像の輪郭ランドマーク周辺色でモデルテクスチャを補完するか
+        self.use_reference_edge_color_completion = use_reference_edge_color_completion
+        self.reference_edge_color_completer = ReferenceEdgeColorCompleter(
+            enabled=use_reference_edge_color_completion,
+            left_reference_path=reference_left_image_path,
+            right_reference_path=reference_right_image_path,
+            source_mode=reference_edge_color_source_mode,
+            draw_debug_landmarks=draw_reference_edge_color_debug_landmarks)
         
         # ファイル名用日付
         self.today = str(datetime.date.today()).replace('-','')
@@ -204,6 +222,18 @@ class CreateMQO:
         face_mesh = face.process(rgb_img)
         if not face_mesh.multi_face_landmarks:
             raise ValueError(f"顔ランドマークを検出できませんでした: {texture_filename}")
+
+        if self.use_reference_edge_color_completion:
+            img, self.texture_for_model = self.reference_edge_color_completer.complete_texture(
+                img,
+                face_mesh.multi_face_landmarks[0],
+                used_path)
+            rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+            annotated_image = img.copy()
+            face_mesh = face.process(rgb_img)
+            if not face_mesh.multi_face_landmarks:
+                raise ValueError(
+                    f"参照色補正後の画像から顔ランドマークを検出できませんでした: {self.texture_for_model}")
         
         # 座標、メッシュ情報格納用リスト
         x = []
@@ -222,7 +252,7 @@ class CreateMQO:
                 self.texture_for_model = self.create_edge_extended_texture(
                     img,
                     face_landmarks,
-                    used_path)
+                    self.texture_for_model)
             # 画像上に描画
             mp.solutions.drawing_utils.draw_landmarks(
                 annotated_image, 

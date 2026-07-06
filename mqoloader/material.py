@@ -71,17 +71,55 @@ class Material():
         glTexImage2D(GL_TEXTURE_2D, 0, internal_format, width, height,
                      0, format_type, GL_UNSIGNED_BYTE, img)
 
-    def update_color_adjustment(self, source_rgb, target_rgb):
+    @staticmethod
+    def _rgb_to_scalar_luminance(rgb, mode):
+        rgb = np.asarray(rgb, dtype=np.uint8).reshape(1, 1, 3)
+        if mode == 'lab_luminance':
+            return float(cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB)[0, 0, 0])
+        return float(cv2.cvtColor(rgb, cv2.COLOR_RGB2YCrCb)[0, 0, 0])
+
+    @staticmethod
+    def adjust_texture_color(source_texture_img, source_rgb, target_rgb, mode='rgb'):
+        source_rgb = source_rgb.astype('float32')
+        target_rgb = target_rgb.astype('float32')
+        adjusted = source_texture_img.astype('float32')
+
+        if mode == 'rgb':
+            rgb = adjusted[:, :, :3]
+            rgb[:] = (rgb - source_rgb) + target_rgb
+            adjusted[:, :, :3] = np.clip(rgb, 0, 255)
+            return adjusted.astype('uint8')
+
+        if mode not in ('ycrcb_luminance', 'lab_luminance'):
+            raise ValueError(f"Unsupported color adjustment mode: {mode}")
+
+        rgb_uint8 = source_texture_img[:, :, :3].copy()
+        if mode == 'lab_luminance':
+            converted = cv2.cvtColor(rgb_uint8, cv2.COLOR_RGB2LAB).astype('float32')
+        else:
+            converted = cv2.cvtColor(rgb_uint8, cv2.COLOR_RGB2YCrCb).astype('float32')
+
+        source_luma = Material._rgb_to_scalar_luminance(source_rgb, mode)
+        target_luma = Material._rgb_to_scalar_luminance(target_rgb, mode)
+        converted[:, :, 0] = np.clip(converted[:, :, 0] + (target_luma - source_luma), 0, 255)
+
+        converted = converted.astype('uint8')
+        if mode == 'lab_luminance':
+            adjusted[:, :, :3] = cv2.cvtColor(converted, cv2.COLOR_LAB2RGB)
+        else:
+            adjusted[:, :, :3] = cv2.cvtColor(converted, cv2.COLOR_YCrCb2RGB)
+
+        return adjusted.astype('uint8')
+
+    def update_color_adjustment(self, source_rgb, target_rgb, mode='rgb'):
         if self.source_texture_img is None:
             return
 
-        source_rgb = source_rgb.astype('float32')
-        target_rgb = target_rgb.astype('float32')
-        adjusted = self.source_texture_img.astype('float32')
-        rgb = adjusted[:, :, :3]
-        rgb[:] = (rgb - source_rgb) + target_rgb
-        adjusted[:, :, :3] = np.clip(rgb, 0, 255)
-        adjusted = adjusted.astype('uint8')
+        adjusted = self.adjust_texture_color(
+            self.source_texture_img,
+            source_rgb,
+            target_rgb,
+            mode)
 
         height, width = adjusted.shape[:2]
         glBindTexture(GL_TEXTURE_2D, self.textureID)

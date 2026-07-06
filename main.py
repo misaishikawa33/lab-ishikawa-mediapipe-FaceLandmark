@@ -118,7 +118,12 @@ class Main:
         start = time.time()
         mqo = CreateMQO(
             texture_filename,
-            use_edge_texture_extension=self.app.use_edge_texture_extension)
+            use_edge_texture_extension=self.app.use_edge_texture_extension,
+            use_reference_edge_color_completion=self.app.use_reference_edge_color_completion,
+            reference_left_image_path=self.app.reference_edge_left_image_path,
+            reference_right_image_path=self.app.reference_edge_right_image_path,
+            reference_edge_color_source_mode=self.app.reference_edge_color_source_mode,
+            draw_reference_edge_color_debug_landmarks=self.app.draw_reference_edge_color_debug_landmarks)
         model_filename = os.getcwd() +"/"+ mqo.model_filename
         end = time.time()
         msg = 'Creating %s' % model_filename

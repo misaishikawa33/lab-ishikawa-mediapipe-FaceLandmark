@@ -172,6 +172,200 @@ MQOファイルのマテリアル設定では，元画像ではなくこの補�
 
 この場合は，\verb|extend_margin| を大きくして補完範囲を広げる，または輪郭付近のUVを少し内側へ寄せる処理を追加することが考えられる．
 
+\section{参照画像を用いた輪郭色補完}
+
+上記のテクスチャ外挿とは別の方法として，横向きに近い参照画像から輪郭周辺の肌色を取得し，モデル生成前の入力テクスチャに反映する方法を実装した．
+この方法では，まず参照画像の色で補正済みテクスチャを作成する．
+その後，補正済みテクスチャに対してMediaPipe FaceMeshを再実行し，その結果を用いて3次元点，UV座標，メッシュ切り出しを作成する．
+つまり，モデル生成の入力画像自体を補正済み画像に置き換える方式である．
+
+アプリケーション側では，以下の設定で有効化する．
+
+\begin{lstlisting}[language=Python]
+self.use_edge_texture_extension = False
+self.use_reference_edge_color_completion = True
+self.reference_edge_color_source_mode = 'outer'
+\end{lstlisting}
+
+ここで，\verb|use_edge_texture_extension| は従来のインペイント外挿を使用するかどうかを表す．
+一方，\verb|use_reference_edge_color_completion| は，横向き参照画像から取得した色を顔端テクスチャへ反映する処理を使用するかどうかを表す．
+\verb|reference_edge_color_source_mode| は，参照画像側で色を取得するランドマークを切り替える設定である．
+\verb|'outer'| の場合は外側ランドマークから色を取得し，外側ランドマークへ反映する．
+\verb|'inner'| の場合は1つ内側のランドマークから色を取得し，外側ランドマークへ反映する．
+
+\subsection{参照画像}
+
+参照画像には，左右それぞれの顔端情報を含む画像を用いる．
+
+\begin{lstlisting}[language=Python]
+self.reference_edge_left_image_path = 'mqodata/face7.jpg'
+self.reference_edge_right_image_path = 'mqodata/face22.jpg'
+\end{lstlisting}
+
+\verb|face7.jpg| からは右側輪郭へ反映する色を取得し，\verb|face22.jpg| からは左側輪郭へ反映する色を取得する．
+各参照画像にMediaPipe FaceMeshを適用し，指定したランドマーク周辺の小領域から色を取得する．
+取得色は，周辺画素の中央値とする．
+中央値を使うことで，髪，影，背景などの外れ値の影響を平均より抑えやすくする．
+
+\section{色取得元ランドマークと反映先ランドマーク}
+
+参照画像から色を取得するランドマークは，\verb|reference_edge_color_source_mode| により切り替える．
+現在の設定では \verb|'outer'| を使用しているため，参照画像側でも外側輪郭ランドマークから色を取得し，モデル生成用テクスチャ側の外側輪郭ランドマークへ反映する．
+
+右側輪郭では，\verb|face7.jpg| の外側ランドマークから色を取得し，補正対象テクスチャ側の同じ外側ランドマークへ反映する．
+
+\begin{lstlisting}[language=Python]
+# face7.jpg: 色を取得する外側ランドマーク
+# 補正対象テクスチャ: 色を反映する外側ランドマーク
+face_outer_234_to_152_ccw = [
+    234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152
+]
+\end{lstlisting}
+
+左側輪郭では，\verb|face22.jpg| の外側ランドマークから色を取得し，補正対象テクスチャ側の同じ外側ランドマークへ反映する．
+
+\begin{lstlisting}[language=Python]
+# face22.jpg: 色を取得する外側ランドマーク
+# 補正対象テクスチャ: 色を反映する外側ランドマーク
+face_outer_454_to_152_cw = [
+    454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152
+]
+\end{lstlisting}
+
+\verb|'inner'| を指定した場合は，以下の内側ランドマークから色を取得し，外側ランドマークへ反映する．
+これは，外側ランドマークが背景や黒い境界画素を拾いやすい場合に利用する．
+
+\begin{lstlisting}[language=Python]
+face_inner_227_to_175_ccw = [
+    227, 137, 177, 215, 138, 135, 169, 170, 140, 171, 175
+]
+
+face_inner_447_to_175_cw = [
+    447, 366, 401, 435, 367, 364, 394, 395, 369, 396, 175
+]
+\end{lstlisting}
+
+実装では，取得元リストと反映先リストを同じ順序で対応付ける．
+\verb|'outer'| の場合，参照画像のランドマーク234から取得した色を補正対象テクスチャのランドマーク234へ反映し，93から取得した色を93へ反映する．
+\verb|'inner'| の場合，参照画像のランドマーク227から取得した色を補正対象テクスチャのランドマーク234へ反映し，137から取得した色を93へ反映する．
+
+\section{参照色補完の実装}
+
+参照色補完の処理は，\verb|ReferenceEdgeColorCompleter.py| に分離した．
+モデル生成処理である \verb|create_MQO.py| から呼び出し，まず元の入力テクスチャにMediaPipeを適用して補正位置を取得する．
+次に，参照画像から得た色を入力テクスチャへ反映し，補正済みテクスチャを保存する．
+その後，補正済みテクスチャに対してMediaPipeを再実行し，そのランドマークを用いてモデルを生成する．
+
+処理の流れは以下である．
+
+\begin{enumerate}
+  \item モデル生成用テクスチャ画像を読み込む
+  \item 元のテクスチャ画像にMediaPipe FaceMeshを適用し，補正位置を取得する
+  \item 参照画像 \verb|face7.jpg| と \verb|face22.jpg| にMediaPipe FaceMeshを適用する
+  \item 参照画像側の指定ランドマーク周辺からBGR色を取得する
+  \item 対応する補正対象テクスチャ側の外側ランドマーク位置へ取得色を反映する
+  \item 外側ランドマーク同士の間も線分として塗り，点状補完による縞模様を抑える
+  \item 補完後テクスチャを \verb|*_reference_edge_color.png| として保存する
+  \item 補完後テクスチャにMediaPipe FaceMeshを再適用する
+  \item 補完後テクスチャ由来のランドマークを用いて，3次元点，UV座標，メッシュを作成する
+  \item MQOモデルから補完後テクスチャを参照する
+\end{enumerate}
+
+実装上の中心処理は以下である．
+
+\begin{lstlisting}[language=Python]
+for source_landmark_id, target_landmark_id in zip(
+        source_landmark_ids,
+        target_landmark_ids):
+    reference_color = self._sample_landmark_bgr(
+        reference['image'],
+        reference['landmarks'].landmark[source_landmark_id])
+    color_updates.setdefault(target_landmark_id, []).append(reference_color)
+\end{lstlisting}
+
+この処理では，参照画像側の色取得元を \verb|source_landmark_id|，補正対象テクスチャ側の反映先を \verb|target_landmark_id| として扱う．
+そのため，色の取得元と反映先を明確に分離できる．
+
+補正後にモデル生成用ランドマークを取り直す処理は，\verb|create_MQO.py| 側で以下のように行う．
+
+\begin{lstlisting}[language=Python]
+img, self.texture_for_model = self.reference_edge_color_completer.complete_texture(
+    img,
+    face_mesh.multi_face_landmarks[0],
+    used_path)
+rgb_img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+face_mesh = face.process(rgb_img)
+\end{lstlisting}
+
+これにより，補正済みテクスチャを入力としてFaceMeshを再実行し，その結果をモデル生成に使用する．
+
+また，外側ランドマークの点だけを塗ると，ランドマーク間に元の黒い画素が残り，肌色と黒が交互に見える縞模様が発生する．
+そこで，隣り合う外側ランドマーク間を線分として塗る処理を追加している．
+
+\begin{lstlisting}[language=Python]
+thickness = max(1, self.paint_radius * 2 + 1)
+cv2.line(img, start_xy, end_xy, color, thickness, cv2.LINE_AA)
+\end{lstlisting}
+
+これにより，輪郭に沿った連続した帯として色を補完できる．
+
+\section{デバッグ出力}
+
+補完に使用したランドマークを確認するため，デバッグ画像を出力できるようにしている．
+
+\begin{lstlisting}[language=Python]
+self.draw_reference_edge_color_debug_landmarks = True
+\end{lstlisting}
+
+有効化すると，以下の画像が \verb|output/debug/| に保存される．
+
+\begin{itemize}
+  \item 補完前テクスチャ上の反映先ランドマーク
+  \item 補完後テクスチャ上の反映先ランドマーク
+  \item \verb|face7.jpg| 上の色取得元ランドマーク
+  \item \verb|face22.jpg| 上の色取得元ランドマーク
+\end{itemize}
+
+これにより，どの参照画像のどの点から色を取得し，モデル側のどの点へ反映しているかを視覚的に確認できる．
+
+\section{従来のテクスチャ外挿との比較}
+
+\verb|use_edge_texture_extension| による従来方式と，参照色補完方式の違いを以下にまとめる．
+
+\begin{table}[h]
+\centering
+\begin{tabular}{|p{0.28\linewidth}|p{0.32\linewidth}|p{0.32\linewidth}|}
+\hline
+項目 & テクスチャ外挿 & 参照色補完 \\
+\hline
+設定 & \shortstack[l]{\texttt{use\_edge\_texture\_extension}\\\texttt{= True}} & \shortstack[l]{\texttt{use\_reference\_edge}\\\texttt{\_color\_completion}\\\texttt{= True}} \\
+\hline
+使用する画像 & モデル生成用の正面画像のみ & 正面画像に加えて左右の参照画像 \\
+\hline
+補完方法 & 顔輪郭マスクを膨張・収縮し，\verb|cv2.inpaint| で周辺色から補間 & 参照画像の指定ランドマーク色を取得し，補正対象テクスチャ側外側輪郭へ反映 \\
+\hline
+補完範囲 & 顔輪郭周辺のマスク領域全体 & 指定した外側輪郭ランドマークとその線分周辺 \\
+\hline
+FaceMesh実行 & 元画像に対して実行 & 補正前に一度実行し，補正後テクスチャに対して再実行 \\
+\hline
+形状への影響 & なし & なし \\
+\hline
+利点 & 参照画像が不要で，自動的に広い領域を補完できる & 横向き画像由来の実色を使えるため，輪郭部の色をより具体的に補える \\
+\hline
+注意点 & 周囲の黒や影が混ざると補完色も暗くなる可能性がある & 参照画像の検出精度や色条件に依存する \\
+\hline
+\end{tabular}
+\end{table}
+
+従来のテクスチャ外挿は，参照画像を用意しなくても使える点が利点である．
+一方で，正面画像の輪郭付近に黒背景や髪の影が強く含まれている場合，インペイント結果にも暗い色が混ざる可能性がある．
+
+参照色補完は，左右の横向き画像から輪郭近傍の肌色を取得できるため，正面画像だけでは不足する顔端の色情報を補いやすい．
+ただし，参照画像の撮影条件が正面画像と大きく異なる場合や，参照画像側のランドマーク検出がずれた場合には，不自然な色が入る可能性がある．
+
+したがって，参照画像が用意できない場合や大まかな黒化対策を行いたい場合はテクスチャ外挿が扱いやすい．
+一方，左右の参照画像があり，顔端の色をより精度よく補いたい場合は参照色補完が有効である．
+
 \section{まとめ}
 
 顔モデル端部の黒化は，アルファ処理がない場合でも発生する．
@@ -179,5 +373,9 @@ MQOファイルのマテリアル設定では，元画像ではなくこの補�
 
 今回の修正では，FaceMeshの顔輪郭からマスクを作成し，輪郭周辺を顔内側の色で外挿したモデル表示用テクスチャを生成した．
 これにより，横向き表示時に黒背景を拾いにくくなり，顔端の黒化を軽減できる．
+
+さらに，参照画像を用いた輪郭色補完では，左右の横向き画像から指定ランドマーク周辺の色を取得し，補正対象テクスチャ側の外側輪郭へ反映する．
+その補正済みテクスチャに対してFaceMeshを再実行し，得られたランドマークを用いてモデルを生成する．
+従来のインペイント外挿と比較して，参照画像由来の実色を使える点が特徴である．
 
 \end{document}

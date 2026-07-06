@@ -53,6 +53,12 @@ class Application:
         self.draw_model_flag = True  # モデル描画のON/OFF
         # 顔端の黒化対策として、モデル生成時にテクスチャ外挿を行うか
         self.use_edge_texture_extension = True
+        # 横向き参照画像の色でモデル生成時の顔端テクスチャを補完するか
+        self.use_reference_edge_color_completion = False
+        self.reference_edge_color_source_mode = 'inner' # 'outer'：外側から外側, 'inner'：内側から外側
+        self.draw_reference_edge_color_debug_landmarks = True
+        self.reference_edge_left_image_path = 'mqodata/face7.jpg'
+        self.reference_edge_right_image_path = 'mqodata/face22.jpg'
         # モデルと入力画像の境界を自然になじませる後処理
         self.use_model_boundary_blend = False
         self.model_boundary_blender = ModelBoundaryBlender(
@@ -60,6 +66,7 @@ class Application:
 
         # 入力画像の肌色基準ランドマーク群を基準にモデルテクスチャの色味・コントラストを合わせる
         self.use_model_color_match = True
+        self.model_color_match_mode = 'lab_luminance' # 'rgb', 'ycrcb_luminance', 'lab_luminance'
         self.skin_landmarks = [10, 151, 9, 8, 168]
         self.color_match_patch_radius = 3
         self.model_reference_rgb = None
@@ -912,7 +919,7 @@ class Application:
                 material.tex,
                 edge_landmark_ids)
             self.model_edge_landmark_colors = dict(self.model_edge_landmark_base_colors)
-            print(f"モデル色補正基準: landmarks={self.skin_landmarks}, RGB={rgb.astype(int).tolist()}")
+            print(f"モデル色補正基準: mode={self.model_color_match_mode}, landmarks={self.skin_landmarks}, RGB={rgb.astype(int).tolist()}")
             for mode, edge_rgb in self.model_edge_reference_rgb.items():
                 if edge_rgb is not None:
                     print(f"モデル輪郭色基準({mode}): RGB={edge_rgb.astype(int).tolist()}")
@@ -931,10 +938,35 @@ class Application:
         updated_colors = {}
         for landmark_id, base_rgb in self.model_edge_landmark_base_colors.items():
             rgb = np.asarray(base_rgb, dtype=np.float32)
-            rgb = (rgb - self.model_reference_rgb) + self.smoothed_target_rgb
+            if self.model_color_match_mode == 'rgb':
+                rgb = (rgb - self.model_reference_rgb) + self.smoothed_target_rgb
+            else:
+                rgb = self.adjust_rgb_luminance(
+                    rgb,
+                    self.model_reference_rgb,
+                    self.smoothed_target_rgb)
             updated_colors[landmark_id] = np.clip(rgb, 0, 255)
 
         self.model_edge_landmark_colors = updated_colors
+
+    def adjust_rgb_luminance(self, rgb, source_rgb, target_rgb):
+        mode = self.model_color_match_mode
+        if mode == 'lab_luminance':
+            convert_to = cv2.COLOR_RGB2LAB
+            convert_from = cv2.COLOR_LAB2RGB
+        else:
+            convert_to = cv2.COLOR_RGB2YCrCb
+            convert_from = cv2.COLOR_YCrCb2RGB
+
+        color = np.asarray(rgb, dtype=np.uint8).reshape(1, 1, 3)
+        source = np.asarray(source_rgb, dtype=np.uint8).reshape(1, 1, 3)
+        target = np.asarray(target_rgb, dtype=np.uint8).reshape(1, 1, 3)
+
+        converted = cv2.cvtColor(color, convert_to).astype(np.float32)
+        source_luma = float(cv2.cvtColor(source, convert_to)[0, 0, 0])
+        target_luma = float(cv2.cvtColor(target, convert_to)[0, 0, 0])
+        converted[:, :, 0] = np.clip(converted[:, :, 0] + (target_luma - source_luma), 0, 255)
+        return cv2.cvtColor(converted.astype(np.uint8), convert_from)[0, 0].astype(np.float32)
 
     def update_model_color_match(self, rgb_image, face_landmarks):
         if not self.use_model_color_match or self.model_reference_rgb is None:
@@ -961,7 +993,8 @@ class Application:
         for material in self.model.materials:
             material.update_color_adjustment(
                 self.model_reference_rgb,
-                self.smoothed_target_rgb)
+                self.smoothed_target_rgb,
+                self.model_color_match_mode)
 
         self.update_model_edge_landmark_colors()
 
