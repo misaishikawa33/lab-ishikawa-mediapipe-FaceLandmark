@@ -74,9 +74,10 @@ class CreateMQO:
         self.outputs.append('}\nEof')
         
         # ファイル出力
-        self.model_filename = "mqodata/model/model_"+self.today+".mqo"
+        # モデルの読み込みを実行日の日付に依存させない。
+        self.model_filename = "mqodata/model/model.mqo"
         if self.use_cut:
-            self.model_filename = "mqodata/model/model_cut_"+self.today+".mqo"
+            self.model_filename = "mqodata/model/model_cut.mqo"
         with open(self.model_filename, "w") as f:
             for output in self.outputs:
                 f.write(output)
@@ -392,7 +393,8 @@ class CreateMQO:
             341, 342, 351, 353, 356, 359, 362, 368, 372, 373, 374, 380,
             381, 382, 383, 384, 385, 386, 387, 388, 389, 390, 398, 413,
             414, 417, 441, 442, 443, 444, 445, 446, 463, 464, 465, 466,
-            467
+            467,   234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152,
+            454, 323, 361, 288, 397, 365, 379, 378, 400, 377
         ]  # 目元
         
 

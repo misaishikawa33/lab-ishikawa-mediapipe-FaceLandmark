@@ -67,7 +67,9 @@ class Application:
         # 入力画像の肌色基準ランドマーク群を基準にモデルテクスチャの色味・コントラストを合わせる
         self.use_model_color_match = True
         self.model_color_match_mode = 'lab_luminance' # 'rgb', 'ycrcb_luminance', 'lab_luminance'
-        self.skin_landmarks = [10, 151, 9, 8, 168]
+        self.skin_landmarks = [
+            10, 151, 9, 8, 168
+        ]
         self.color_match_patch_radius = 3
         self.model_reference_rgb = None
         self.model_edge_reference_rgb = {}
@@ -75,8 +77,8 @@ class Application:
         self.model_edge_landmark_colors = {}
         self.smoothed_target_rgb = None
         self.color_match_smoothing = 0.85 
-        self.color_match_update_yaw_limit = 15.0
-        self.draw_skin_landmarks = False
+        self.model_color_match_locked = False
+        self.draw_skin_landmarks = True
 
         # 顔角度（yaw, pitch, roll）
         self.angle = None
@@ -96,6 +98,8 @@ class Application:
         # YOLO輪郭補正の主な設定
         # 補正処理自体を使うかどうか
         self.use_yolo_rinkaku_correction = True
+        # 正面付近でもYOLO輪郭補正を使うかどうか
+        self.use_yolo_front_correction = True
         # YOLOの検出結果・補正点を画面に描画するかどうか
         self.draw_yolo_debug_overlay = True
         self.realtime_frame_count = 0
@@ -103,13 +107,14 @@ class Application:
             width=width,
             height=height,
             enabled=self.use_yolo_rinkaku_correction,
+            use_front_correction=self.use_yolo_front_correction,
             draw_debug_overlay=self.draw_yolo_debug_overlay)
 
         # 対応点選択モード
         # False: Pキーで手動切替（従来）
-        # True: 顔角度で自動切替（基本=datalist3, yaw>=20:datalist2, yaw<=-20:datalist1）
+        # True: 顔角度で自動切替（基本=datalist3, yaw>=15:datalist2, yaw<=-15:datalist1）
         self.use_angle_based_point_selection = True
-        self.point_mode_yaw_threshold = 20
+        self.point_mode_yaw_threshold = 15 
         
         #
         # USBカメラの設定
@@ -560,6 +565,21 @@ class Application:
             else:
                 print("モデル境界ブレンドを無効化しました")
 
+        # Cでモデル色補正の有効化、または更新停止/再開
+        if action == glfw.PRESS and key == glfw.KEY_C:
+            if not self.use_model_color_match:
+                self.use_model_color_match = True
+                self.model_color_match_locked = False
+                self.initialize_model_color_reference()
+                print("モデル色補正を有効化しました")
+                return
+
+            self.model_color_match_locked = not self.model_color_match_locked
+            if self.model_color_match_locked:
+                print("モデル色補正の更新を停止しました（現在の補正式を保持）")
+            else:
+                print("モデル色補正の更新を再開しました")
+
         # YでYOLOデバッグ描画のON/OFF切り替え
         if action == glfw.PRESS and key == glfw.KEY_Y:
             self.draw_yolo_debug_overlay = not self.draw_yolo_debug_overlay
@@ -972,10 +992,8 @@ class Application:
         if not self.use_model_color_match or self.model_reference_rgb is None:
             return
 
-        if self.angle is not None and self.smoothed_target_rgb is not None:
-            yaw = self.angle[0]
-            if abs(yaw) > self.color_match_update_yaw_limit:
-                return
+        if self.model_color_match_locked:
+            return
 
         target_rgb = self.sample_landmarks_rgb(
             rgb_image,
@@ -1078,6 +1096,8 @@ class Application:
         """
         ステータス表示モードに応じて情報を表示
         """
+        self.draw_model_color_match_status(image)
+
         if self.status_display_mode == 0:
             # コンパクトモード
             self.draw_compact_status_info(image)
@@ -1087,6 +1107,36 @@ class Application:
         elif self.status_display_mode == 2:
             # コンソールモード（画面には何も表示しない）
             pass
+
+    def draw_model_color_match_status(self, image):
+        if not self.use_model_color_match:
+            status = "OFF"
+            status_color = (255, 80, 80)
+        elif self.model_color_match_locked:
+            status = "LOCK"
+            status_color = (255, 180, 0)
+        else:
+            status = "ON"
+            status_color = (80, 255, 80)
+
+        label = f"[C] COLOR MATCH: {status}"
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        scale = 0.85
+        thickness = 2
+        text_size, baseline = cv2.getTextSize(label, font, scale, thickness)
+        text_w, text_h = text_size
+        x, y = 14, 34
+        padding_x, padding_y = 10, 9
+
+        overlay = image.copy()
+        cv2.rectangle(
+            overlay,
+            (x - padding_x, y - text_h - padding_y),
+            (x + text_w + padding_x, y + baseline + padding_y),
+            (0, 0, 0),
+            -1)
+        cv2.addWeighted(overlay, 0.65, image, 0.35, 0, image)
+        cv2.putText(image, label, (x, y), font, scale, status_color, thickness, cv2.LINE_AA)
     
     def draw_compact_status_info(self, image):
         """
@@ -1095,7 +1145,7 @@ class Application:
         model_status = "ON" if self.draw_model_flag else "OFF"
         boundary_status = "ON" if self.use_model_boundary_blend else "OFF"
         status_text = f"Model Draw: {model_status}  Boundary: {boundary_status}"
-        cv2.putText(image, status_text, (10, 30),
+        cv2.putText(image, status_text, (10, 82),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
 
         if self.angle is None:
@@ -1105,7 +1155,7 @@ class Application:
             rounded_yaw = int(round(yaw / 5.0) * 5)
             angle_text = f"Face Yaw: {rounded_yaw} deg"
 
-        cv2.putText(image, angle_text, (10, 58),
+        cv2.putText(image, angle_text, (10, 110),
                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
     
     def draw_detailed_status_info(self, image):

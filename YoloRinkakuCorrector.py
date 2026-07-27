@@ -17,14 +17,17 @@ class YoloRinkakuCorrector:
             csv_path='mqodata/input/yolooutput.csv',
             use_outlier_filter=True,
             border_margin_ratio=0.05,
-            yaw_threshold_neg=-20,
-            yaw_threshold_pos=20,
+            yaw_threshold_neg=-15,
+            yaw_threshold_pos=15,
+            use_front_correction=True,
             target_landmarks_right=None,
             target_landmarks_left=None,
+            target_landmarks_front_right=None,
+            target_landmarks_front_left=None,
             target_landmarks_upper=None,
             draw_debug_overlay=True,
             use_landmark_crop=True, # YOLO入力をランドマークに基づいて切り抜き
-            crop_margin_ratio=0.35,
+            crop_margin_ratio=0.2,
             use_mask_edge_inpaint=False,# マスクの端を輪郭ランドマーク色でなじませる
             edge_inpaint_erode=30,
             edge_inpaint_radius=1,
@@ -42,6 +45,7 @@ class YoloRinkakuCorrector:
         self.border_margin_ratio = border_margin_ratio
         self.yaw_threshold_neg = yaw_threshold_neg
         self.yaw_threshold_pos = yaw_threshold_pos
+        self.use_front_correction = use_front_correction
         self.draw_debug_overlay = draw_debug_overlay
         self.use_landmark_crop = use_landmark_crop
         self.crop_margin_ratio = crop_margin_ratio
@@ -58,6 +62,12 @@ class YoloRinkakuCorrector:
         self.target_landmarks_left = target_landmarks_left or [
             340, 345, 352, 376, 411, 427, 416, 434, 364, 394, 369, 400, 377, 152
         ]
+        self.target_landmarks_front_right = target_landmarks_front_right or [
+            234, 93, 132, 58, 172, 136, 150, 149, 176, 148, 152
+        ]
+        self.target_landmarks_front_left = target_landmarks_front_left or [
+            454, 323, 361, 288, 397, 365, 379, 378, 400, 377, 152
+        ]
         self.target_landmarks_upper = target_landmarks_upper or [
             6, 31, 111, 112, 116, 122, 227, 228, 229, 230,
             231, 232, 233, 234, 244, 261, 340, 341, 345, 351,
@@ -73,6 +83,13 @@ class YoloRinkakuCorrector:
                 'start_key': 'left_edge',
                 'avoid_key': 'right_edge',
                 'target_landmarks': self.target_landmarks_left,
+            },
+            'both': {
+                'start_key': None,
+                'avoid_key': None,
+                'target_landmarks': (
+                    self.target_landmarks_front_right
+                    + self.target_landmarks_front_left),
             },
         }
 
@@ -109,6 +126,10 @@ class YoloRinkakuCorrector:
     def get_rinkaku_mode_from_yaw(self, yaw):
         if yaw is None:
             return None
+        if (
+                self.use_front_correction
+                and self.yaw_threshold_neg <= yaw <= self.yaw_threshold_pos):
+            return 'both'
         if yaw >= self.yaw_threshold_pos:
             return 'left'
         if yaw <= self.yaw_threshold_neg:
@@ -128,7 +149,10 @@ class YoloRinkakuCorrector:
         mode_config = self.mode_config.get(rinkaku_mode, self.mode_config['right'])
         border_margin = max(1, int(min(self.width, self.height) * self.border_margin_ratio))
 
-        required_keys = ['chin', mode_config['start_key']]
+        if rinkaku_mode == 'both':
+            required_keys = ['chin', 'right_edge', 'left_edge']
+        else:
+            required_keys = ['chin', mode_config['start_key']]
         if mode_config.get('avoid_key'):
             required_keys.append(mode_config['avoid_key'])
 
@@ -528,6 +552,45 @@ class YoloRinkakuCorrector:
             return False, {}
         self.latest_mask_contour = best_contour.copy()
 
+        if rinkaku_mode == 'both':
+            if self.use_outlier_filter and not self.is_yolo_keypoints_reliable(
+                    keypoints, rinkaku_mode):
+                self.latest_yolo_keypoints = keypoints
+                self.latest_rinkaku_points = []
+                return False, {}
+
+            right_points = self.extract_contour_between_points(
+                keypoints['all_points'],
+                keypoints['chin'],
+                keypoints['right_edge'])
+            left_points = self.extract_contour_between_points_avoiding(
+                keypoints['all_points'],
+                keypoints['left_edge'],
+                keypoints['chin'],
+                keypoints['right_edge'])
+            if len(right_points) < 2 or len(left_points) < 2:
+                self.latest_yolo_keypoints = keypoints
+                self.latest_rinkaku_points = []
+                return False, {}
+
+            right_success, right_overrides = self.build_landmark_overrides_from_points(
+                right_points,
+                self.target_landmarks_front_right)
+            left_success, left_overrides = self.build_landmark_overrides_from_points(
+                left_points,
+                self.target_landmarks_front_left)
+            success = right_success and left_success
+            overrides = {**right_overrides, **left_overrides} if success else {}
+
+            self.latest_yolo_keypoints = keypoints
+            self.latest_rinkaku_points = right_points + list(reversed(left_points[:-1]))
+            if self.export_csv:
+                self.save_rinkaku_points_to_csv(self.latest_rinkaku_points)
+            self.landmark_overrides_loaded = success
+            if success:
+                self.landmark_overrides_px = overrides
+            return success, overrides
+
         mode_config = self.mode_config.get(rinkaku_mode, self.mode_config['right'])
         contour_start_point = keypoints.get(mode_config['start_key'])
         avoid_key = mode_config['avoid_key']
@@ -574,7 +637,7 @@ class YoloRinkakuCorrector:
         )
         self.landmark_overrides_loaded = success
         if success:
-            self.landmark_overrides_px.update(overrides)
+            self.landmark_overrides_px = overrides
 
         return success, overrides
 
